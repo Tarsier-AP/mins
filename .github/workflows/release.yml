@@ -1,0 +1,153 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VERSION: "2.0.0"
+  GO_VERSION: "1.24.x"
+
+jobs:
+  build:
+    name: ${{ matrix.os }}/${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            runner: ubuntu-24.04
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - os: windows
+            arch: amd64
+            runner: windows-2022
+          - os: darwin
+            arch: amd64
+            runner: macos-13
+          - os: darwin
+            arch: arm64
+            runner: macos-14
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build meson nasm pkg-config git curl \
+            xz-utils zip autoconf automake libtool libpng-dev libjpeg-dev zlib1g-dev
+
+      - name: Install build dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake ninja meson nasm pkg-config autoconf automake libtool
+
+      - name: Set up MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-nasm
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-zlib
+            autoconf automake libtool git curl unzip zip
+
+      - name: Cache sources and prefix
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/build/src
+            tools/build/prefix
+          key: ${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('tools/versions.env') }}
+
+      - name: Build toolchain (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          bash tools/fetch-sources.sh
+          WITH_VISQOL=0 bash tools/build.sh
+          bash tools/build-visqol.sh || echo "::warning::ViSQOL build failed; VISQOL_BIN will be required at runtime"
+
+      - name: Build toolchain (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          bash tools/fetch-sources.sh
+          WITH_VISQOL=0 bash tools/build.sh
+
+      - name: Attempt ViSQOL (Windows, best effort)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: msys2 {0}
+        run: |
+          bash tools/build-visqol.sh
+
+      - name: Package embedded assets
+        run: bash tools/package-assets.sh ${{ matrix.os }}_${{ matrix.arch }}
+
+      - name: Build Go binary
+        run: |
+          hash=$( (sha256sum tools/versions.env 2>/dev/null || shasum -a 256 tools/versions.env) | cut -c1-12)
+          ext=""
+          [ "${{ matrix.os }}" = windows ] && ext=".exe"
+          mkdir -p "tools/dist/${{ matrix.os }}-${{ matrix.arch }}"
+          go build -trimpath -ldflags "-s -w -X mins/internal/tools.BuildHash=$hash" \
+            -o "tools/dist/${{ matrix.os }}-${{ matrix.arch }}/mins$ext" ./cmd/mins
+          cp LICENSE THIRD_PARTY_NOTICES.md "tools/dist/${{ matrix.os }}-${{ matrix.arch }}/"
+
+      - name: Package release archive
+        run: bash tools/package-release.sh tools/dist "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mins-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            tools/dist/mins_*
+            tools/dist/sha256sums.txt
+          if-no-files-found: error
+
+  publish:
+    name: publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Collect archives
+        run: |
+          mkdir -p release
+          find artifacts -maxdepth 2 -type f \( -name 'mins_*' -o -name 'sha256sums.txt' \) -exec cp {} release/ \;
+          (cd release && sha256sum mins_* >sha256sums.txt)
+          ls -l release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/mins_*
+            release/sha256sums.txt
