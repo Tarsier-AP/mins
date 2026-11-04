@@ -10,7 +10,7 @@ set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 target=${1:?usage: package-assets.sh <os>_<arch>}
-PREFIX=${PREFIX:-$root/tools/build/prefix}
+PREFIX=${PREFIX:-$root/tools/.build/prefix}
 dest="$root/internal/tools/assets/$target"
 
 case $target in

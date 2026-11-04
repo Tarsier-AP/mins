@@ -30,7 +30,7 @@ jobs:
             runner: windows-2022
           - os: darwin
             arch: amd64
-            runner: macos-13
+            runner: macos-15-intel
           - os: darwin
             arch: arm64
             runner: macos-14
@@ -47,18 +47,26 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
+      - name: Install Bazelisk (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          go install github.com/bazelbuild/bazelisk@v1.30.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Install build dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build meson nasm pkg-config git curl \
-            xz-utils zip autoconf automake libtool libpng-dev libjpeg-dev zlib1g-dev
+            xz-utils bzip2 zip autoconf automake libtool \
+            libpng-dev libjpeg-dev liblcms2-dev libbrotli-dev zlib1g-dev
 
       - name: Install build dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install cmake ninja meson nasm pkg-config autoconf automake libtool
+          brew install cmake ninja meson nasm pkg-config autoconf automake libtool \
+            libpng jpeg-turbo lcms2 brotli
 
       - name: Set up MSYS2 (Windows)
         if: runner.os == 'Windows'
@@ -74,16 +82,17 @@ jobs:
             mingw-w64-x86_64-nasm
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-libjpeg-turbo
+            mingw-w64-x86_64-lcms2
+            mingw-w64-x86_64-brotli
             mingw-w64-x86_64-zlib
             autoconf automake libtool git curl unzip zip
 
-      - name: Cache sources and prefix
+      - name: Cache sources
         uses: actions/cache@v4
         with:
-          path: |
-            tools/build/src
-            tools/build/prefix
-          key: ${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('tools/versions.env') }}
+          path: tools/.build/src
+          key: ${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('tools/versions.env', 'tools/build.sh', 'tools/build-visqol.sh', 'tools/fetch-sources.sh', 'tools/patches/**') }}
 
       - name: Build toolchain (Unix)
         if: runner.os != 'Windows'
@@ -118,6 +127,57 @@ jobs:
           go build -trimpath -ldflags "-s -w -X mins/internal/tools.BuildHash=$hash" \
             -o "tools/dist/${{ matrix.os }}-${{ matrix.arch }}/mins$ext" ./cmd/mins
           cp LICENSE THIRD_PARTY_NOTICES.md "tools/dist/${{ matrix.os }}-${{ matrix.arch }}/"
+
+      - name: Smoke test embedded toolchain
+        run: |
+          target="${{ matrix.os }}-${{ matrix.arch }}"
+          ext=""
+          [ "${{ matrix.os }}" = windows ] && ext=".exe"
+          bin="tools/dist/$target/mins$ext"
+          ff="tools/.build/prefix/bin/ffmpeg$ext"
+          work="$PWD/.smoke"
+          empty="$work/empty"
+          rm -rf "$work"
+          mkdir -p "$empty" "$work"
+          # A PATH with no media tools proves the embedded cache is used. The
+          # MSYS/Git-Bash runtime rewrites PATH for native executables, so a
+          # POSIX path is enough on Windows too. MINS_TOOLS_DIR is a regular
+          # variable, so it needs a native path there.
+          tools_dir="$work/tools"
+          if [ "${{ matrix.os }}" = windows ]; then
+            tools_dir=$(cygpath -w "$tools_dir")
+          fi
+          run_embedded() { env PATH="$empty" MINS_TOOLS_DIR="$tools_dir" "$bin" --no-tui "$@"; }
+
+          "$ff" -hide_banner -loglevel error -y \
+            -f lavfi -i "testsrc2=s=64x64:d=1" -frames:v 1 "$work/in.png"
+          cp "$work/in.png" "$work/avif.png"
+          cp "$work/in.png" "$work/jxl.png"
+
+          run_embedded --target 80 --img-encoder libwebp "$work/in.png"
+          test -s "$work/in.webp"
+          run_embedded --target 80 --img-encoder libavif "$work/avif.png"
+          test -s "$work/avif.avif"
+          run_embedded --target 80 --img-encoder libjxl "$work/jxl.png"
+          test -s "$work/jxl.jxl"
+
+          # libx264 is not part of this toolchain; mpeg4 is built into FFmpeg
+          # and is only the smoke test's input.
+          "$ff" -hide_banner -loglevel error -y \
+            -f lavfi -i "testsrc2=s=96x64:d=1:r=10" -c:v mpeg4 -q:v 3 "$work/clip.mp4"
+          run_embedded --target 50 --crf-min 20 --crf-max 40 "$work/clip.mp4"
+          test -s "$work/clip.av1.mp4"
+
+          # Exercises img2webp + anim_dump from the embedded bundle.
+          run_embedded --mode animate --target 80 --img-fmt webp "$work/clip.mp4"
+          test -s "$work/clip.webp"
+
+          if [ -x "tools/.build/prefix/bin/visqol$ext" ]; then
+            "$ff" -hide_banner -loglevel error -y \
+              -f lavfi -i "sine=frequency=440:duration=2" -c:a flac "$work/tone.flac"
+            run_embedded "$work/tone.flac"
+            test -s "$work/tone.opus"
+          fi
 
       - name: Package release archive
         run: bash tools/package-release.sh tools/dist "$VERSION"

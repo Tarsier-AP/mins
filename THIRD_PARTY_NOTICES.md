@@ -15,6 +15,7 @@ Review every license below before redistributing anything.
 | SVT-AV1 | 3.1.0 | BSD-2-Clause | https://gitlab.com/AOMediaCodec/SVT-AV1 |
 | libaom | 3.13.1 | BSD-2-Clause | https://aomedia.googlesource.com/aom |
 | libwebp | 1.6.0 | BSD-3-Clause | https://chromium.googlesource.com/webm/libwebp |
+| giflib | 5.2.2 | MIT | https://sourceforge.net/projects/giflib/ |
 | libavif | 1.4.2 | BSD-2-Clause | https://github.com/AOMediaCodec/libavif |
 | libjxl | 0.12.0 | BSD-3-Clause | https://github.com/libjxl/libjxl |
 | libheif | 1.23.7 | LGPL-3.0 | https://github.com/strukturag/libheif |

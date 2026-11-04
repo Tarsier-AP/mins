@@ -70,14 +70,24 @@ Pinned in `tools/versions.env`:
 | tool | version |
 |---|---|
 | FFmpeg | 9.0.2 |
+| libvmaf | 3.0.0 (linked into FFmpeg) |
+| SVT-AV1 | 3.1.0 |
+| libaom | 3.13.1 |
+| libopus | 1.6.1 |
 | libwebp | 1.6.0 |
+| giflib | 5.2.2 (for `anim_dump`) |
 | libavif | 1.4.2 |
 | libjxl | 0.12.0 |
 | libheif | 1.23.7 |
-| ViSQOL | 3.3.3 |
+| libde265 | 1.0.16 |
+| ViSQOL | 3.3.3 (Bazel 5.4.1, patched) |
 
 CI (`.github/workflows/release.yml`) builds the tools on native runners,
 then cross-compiles the Go binary with the per-target asset directory.
+`tools/build.sh` refuses to package any required executable that still links a
+non-system shared library. ViSQOL is optional at packaging time: if its Bazel
+build produces a non-portable binary, it is dropped and mins asks for
+`VISQOL_BIN` at runtime.
 
 ## Checklist
 
@@ -98,7 +108,11 @@ then cross-compiles the Go binary with the per-target asset directory.
 - [x] integration fixtures + optional parity/real-clip hooks
 - [x] toolchain build scripts + CI
 - [x] release archives
-- [ ] first green CI run (native toolchain builds need runner validation)
+- [x] static-link / portability audit in the toolchain build
+- [x] local linux/amd64 bundled-toolchain build and embedded smoke test
+- [ ] first green CI run for all five targets (native toolchain builds need
+      runner validation; ViSQOL/Bazel and macOS/Windows link closure are the
+      remaining unknowns)
 
 ## Verification
 

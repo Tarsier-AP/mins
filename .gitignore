@@ -3,7 +3,7 @@
 /dist/
 /internal/tools/assets/*/*
 !/internal/tools/assets/*/.keep
-/tools/build/
+/tools/.build/
 /testdata/generated/
 /tools/dist/
 *.part

@@ -16,7 +16,10 @@ codec package is required at runtime.
   search, trim windows, audio track selection, `--audio-search`, subtitle
   policy, `--refine`, and frame-by-frame `--fbf`.
 - **Images → WebP / AVIF / JPEG XL** through `libwebp`, `libavif` and `libjxl`
-  (still and animated), gated by VMAF against the source.
+  (still and animated), gated by VMAF against the source. `--q-auto` shares an
+  adaptive search window across inputs: each file probes the adaptive q-min
+  first, the upper bound keeps the largest passing quality, and both still use
+  binary search to find the lowest passing q per file.
 - **Video → animated image** with `--mode animate`.
 - **Standalone audio** with a bitrate search gated by ViSQOL or FFmpeg's
   `asisdr` / `asdr` / `apsnr`.
@@ -37,7 +40,21 @@ make integration      # end-to-end tests against the built binary
 ```
 
 A development build has no embedded assets and resolves tools from `PATH`.
-To point it at a locally built toolchain:
+
+To build a self-contained binary, build the pinned toolchain first:
+
+```sh
+make toolchain        # fetch sources + build into tools/.build/prefix (slow)
+make bundle           # package host assets, then build ./mins with them
+```
+
+`make toolchain` needs CMake, Ninja, Meson, NASM, pkg-config, a C/C++
+compiler, autotools, and Bazelisk (for ViSQOL). On Linux it produces fully
+static tool binaries; on macOS only system libraries (`/usr/lib`,
+`/System/Library`) remain dynamic. `tools/build.sh` audits every packaged
+executable and refuses to continue if it picked up a Homebrew/MSYS2 library.
+
+To point a development build at a locally built toolchain:
 
 ```sh
 export MINS_TOOLS_DIR=/opt/mins-tools
@@ -59,6 +76,7 @@ mins --img-fmt avif photo.jpg      # -> photo.avif
 mins --mode animate clip.mp4       # -> clip.webp (animated)
 mins track.flac                    # -> track.opus + track.audio.json
 mins --target 97 --encoder aom *.mkv
+mins --q-auto *.jpg                # adaptive quality search across a batch
 ```
 
 Run `mins --help` for every flag. `--img-encoder magick` is rejected on
@@ -74,6 +92,7 @@ Release binaries embed compressed copies of:
 | tool | used for |
 |---|---|
 | FFmpeg + ffprobe | decode/encode, libvmaf, audio metrics, muxing |
+| libvmaf | linked into FFmpeg's `libvmaf` filter (no separate executable) |
 | libwebp (`cwebp`, `dwebp`, `img2webp`, `anim_dump`) | WebP |
 | libavif (`avifenc`, `avifdec`) | AVIF |
 | libjxl (`cjxl`, `djxl`) | JPEG XL |
@@ -86,13 +105,25 @@ SHA-256 manifest, and reused afterwards. Set `MINS_TOOLS_DIR` to choose a
 different location. A corrupt or half-written cache entry is re-extracted
 automatically.
 
+The build is reproducible from `tools/versions.env`. On Linux the packaged
+executables are fully static; macOS uses only the system libc/libc++ and
+frameworks. ViSQOL is built without TensorFlow/TFLite (see
+`tools/patches/`), so its optional deep-lattice speech model is unavailable;
+audio quality measurement (the mode mins uses) and the default speech mapper
+are unaffected.
+
 ## Limits
 
 - Camera RAW input is not supported (no libraw).
 - HEIC/HEIF support is still-image only; animated HEIF is not decoded.
-- Windows ViSQOL is built on a best-effort basis. If it is not available, set
-  `VISQOL_BIN` (and `VISQOL_MODEL`), or use `--audio-metric asisdr`; mins fails
-  with a clear error instead of silently changing the metric.
+- Windows ViSQOL is built on a best-effort basis because Bazel's Windows
+  toolchain is MSVC-oriented, while the rest of the bundle is MinGW. If it is
+  not available, set `VISQOL_BIN` (and `VISQOL_MODEL`), or use
+  `--audio-metric asisdr`; mins fails with a clear error instead of silently
+  changing the metric.
+- ViSQOL's deep-lattice speech mapper is not compiled in (it required
+  TensorFlow/TFLite). `--use_speech_mode` still works through the polynomial
+  mapper; the flag is accepted but falls back with a warning.
 
 ## Release
 
