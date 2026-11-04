@@ -99,6 +99,23 @@ func TestJXLQualityFloor(t *testing.T) {
 	}
 }
 
+func TestQAuto(t *testing.T) {
+	c := parse(t, "--q-auto", "in.jpg")
+	if !c.QAuto {
+		t.Fatal("--q-auto did not reach the config")
+	}
+	c = parse(t, "--q-auto", "in.mp4")
+	found := false
+	for _, w := range c.Warnings {
+		if strings.Contains(w, "--q-auto applies to image/animate inputs only") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected the --q-auto applicability warning, got %v", c.Warnings)
+	}
+}
+
 func mustParse(t *testing.T, args ...string) *cli.Options {
 	t.Helper()
 	o, err := cli.Parse(args)

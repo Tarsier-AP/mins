@@ -36,6 +36,7 @@ type Config struct {
 	CRFMax     int
 	QMin       int
 	QMax       int
+	QAuto      bool
 	BRMin      int
 	BRMax      int
 
@@ -145,6 +146,7 @@ func Normalize(o *cli.Options) (*Config, error) {
 		NoTUI:           o.NoTUI,
 		NoJSON:          o.NoJSON,
 		Refine:          o.Refine,
+		QAuto:           o.QAuto,
 		SkipExisting:    o.SkipExisting,
 		LogFile:         o.Log,
 		Positional:      o.Positional,
@@ -614,6 +616,9 @@ func (c *Config) addWarnings(o *cli.Options) {
 	}
 	if !c.NeedImage && o.ImgEncoderSet {
 		c.Warnings = append(c.Warnings, "warning: --img-encoder applies to image inputs only; ignored here")
+	}
+	if !c.NeedImage && o.QAuto {
+		c.Warnings = append(c.Warnings, "warning: --q-auto applies to image/animate inputs only; ignored here")
 	}
 	if c.NeedImage && c.ImgBackend != "libavif" && !(c.ImgBackend == "auto" && c.ImgFmt == "avif") && o.AvifYUVSet {
 		c.Warnings = append(c.Warnings, "warning: --avif-yuv applies to --img-encoder libavif only; ignored here")

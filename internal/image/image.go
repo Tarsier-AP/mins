@@ -3,6 +3,7 @@
 package image
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -290,41 +291,55 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 	}
 	e.Log.Info("input : %s (%s%s) -> %s %s", filepath.Base(input), res, animDesc, c.ImgFmt, effort)
 
-	lo, hi := c.QMin, c.QMax
-	if qf := qfloor(e); lo < qf {
-		lo = qf
+	baseLo := c.QMin
+	if qf := qfloor(e); baseLo < qf {
+		baseLo = qf
 	}
-	best := -1
-	for lo <= hi {
-		mid := (lo + hi) / 2
-		cand := filepath.Join(work, fmt.Sprintf("search_%d.%s", mid, c.ImgFmt))
-		tool, err := encode(mid, cand)
+	hi, seed := c.QMax, -1
+	if c.QAuto && e.QState != nil {
+		hi, seed = e.QState.Window(baseLo)
+	}
+	encodeTool := ""
+	eval := func(q int) (float64, int64, error) {
+		cand := filepath.Join(work, fmt.Sprintf("search_%d.%s", q, c.ImgFmt))
+		tool, err := encode(q, cand)
+		encodeTool = tool
 		if err != nil {
-			return encodeFail(e, input, filepath.Join(work, "magick_err.log"), tool, p.Tag), true, nil
+			return 0, 0, errEncodeFailed
 		}
+		defer os.Remove(cand)
 		mean, err := measure(cand)
 		if err != nil {
-			return result.Row{}, true, err
+			return 0, 0, err
 		}
-		size := fileSize(cand)
-		verdict := "FAIL"
-		if util.AtLeast(mean, c.TargetVMAF) {
-			verdict = "PASS"
-		}
-		e.Log.Info("search: q=%d vmaf=%s size=%s %s", mid, util.Float(mean), util.HumanSize(size), verdict)
-		e.TUI.Attempt("search", mid, mean, c.TargetVMAF, verdict)
-		if verdict == "PASS" {
-			best = mid
-			hi = mid - 1
-		} else {
-			lo = mid + 1
-		}
-		_ = os.Remove(cand)
+		return mean, fileSize(cand), nil
 	}
+	found, err := searchQuality(searchRequest{
+		Lo: baseLo, Hi: hi, Seed: seed, Target: c.TargetVMAF,
+		Auto: c.QAuto,
+		Eval: eval,
+		Log:  e.Log.Info,
+		Attempt: func(q int, mean float64, verdict string) {
+			e.TUI.Attempt("search", q, mean, c.TargetVMAF, verdict)
+		},
+	})
+	if err != nil {
+		if errors.Is(err, errEncodeFailed) {
+			return encodeFail(e, input, filepath.Join(work, "magick_err.log"), encodeTool, p.Tag), true, nil
+		}
+		return result.Row{}, true, err
+	}
+	best := found.Best
 	if best < 0 {
-		best = c.QMax
-		e.Log.Info("warning: no quality in [%d..%d] reached VMAF %s; falling back to q=%d",
-			c.QMin, c.QMax, c.TargetRaw, best)
+		if c.QAuto {
+			best = found.Hi
+			e.Log.Info("warning: no quality in [%d..%d] reached VMAF %s; falling back to q=%d",
+				found.Lo, found.Hi, c.TargetRaw, best)
+		} else {
+			best = c.QMax
+			e.Log.Info("warning: no quality in [%d..%d] reached VMAF %s; falling back to q=%d",
+				c.QMin, c.QMax, c.TargetRaw, best)
+		}
 	}
 
 	inSize := fileSize(input)
@@ -339,6 +354,13 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 	}
 	size := fileSize(final)
 	passed := util.AtLeast(mean, c.TargetVMAF)
+	if c.QAuto && e.QState != nil {
+		if passed {
+			e.QState.Record(best)
+		} else if found.Best < 0 {
+			e.QState.RecordFailure()
+		}
+	}
 	verdict := "FAIL"
 	if passed {
 		verdict = "PASS"

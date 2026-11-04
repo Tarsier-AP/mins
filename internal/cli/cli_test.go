@@ -66,6 +66,19 @@ func TestMissingValue(t *testing.T) {
 	}
 }
 
+func TestQAuto(t *testing.T) {
+	o, err := Parse([]string{"--q-auto", "a.jpg", "b.jpg"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !o.QAuto {
+		t.Fatal("--q-auto did not set QAuto")
+	}
+	if len(o.Positional) != 2 || o.Positional[0] != "a.jpg" || o.Positional[1] != "b.jpg" {
+		t.Errorf("positional = %v", o.Positional)
+	}
+}
+
 func TestHelpAndVersionMarkers(t *testing.T) {
 	o, _ := Parse([]string{"--help"})
 	if o.Log != "\x00help" {

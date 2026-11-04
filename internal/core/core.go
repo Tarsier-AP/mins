@@ -32,6 +32,97 @@ type Env struct {
 	VisqolBin   string
 	VisqolModel string
 	Version     string
+
+	// QState carries the adaptive image quality window across a --q-auto
+	// batch. It is nil when --q-auto is off.
+	QState *QState
+}
+
+// MaxQuality is the highest encoder quality the adaptive search may reach.
+const MaxQuality = 100
+
+// QState is the shared, thread-safe adaptive quality window used by --q-auto.
+// qmin is the first probe for the next input (not a hard lower bound), qmax is
+// the upper bound, and first reports that no successful input has been seen
+// yet, so the first input still starts from the midpoint of the whole range.
+type QState struct {
+	mu    sync.Mutex
+	qmin  int
+	qmax  int
+	first bool
+}
+
+// NewQState returns a window starting at the configured q-min/q-max.
+func NewQState(qmin, qmax int) *QState {
+	if qmax > MaxQuality {
+		qmax = MaxQuality
+	}
+	if qmin > qmax {
+		qmin = qmax
+	}
+	return &QState{qmin: qmin, qmax: qmax, first: true}
+}
+
+// Window returns the upper bound and the first probe for the next input. seed
+// is -1 when the caller should start from the midpoint (first input, or an
+// empty window). lo is the encoder's minimum quality.
+func (s *QState) Window(lo int) (hi, seed int) {
+	if s == nil {
+		return 0, -1
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	hi = s.qmax
+	if hi < lo {
+		hi = lo
+	}
+	if hi > MaxQuality {
+		hi = MaxQuality
+	}
+	if s.first {
+		return hi, -1
+	}
+	seed = s.qmin
+	if seed < lo {
+		seed = lo
+	}
+	if seed > hi {
+		seed = hi
+	}
+	return hi, seed
+}
+
+// Record folds a passing quality into the shared window for the next input:
+// the first result sets q-max, later results only raise it; q-min advances by
+// at most 5 and never above the result.
+func (s *QState) Record(q int) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.first {
+		s.qmax = q
+		s.first = false
+	} else if q > s.qmax {
+		s.qmax = q
+	}
+	if next := s.qmin + 5; next < q {
+		s.qmin = next
+	} else {
+		s.qmin = q
+	}
+}
+
+// RecordFailure records that no quality up to q-max reached the target: the
+// upper bound moves to 100 and q-min is left alone.
+func (s *QState) RecordFailure() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.qmax = MaxQuality
+	s.mu.Unlock()
 }
 
 // Clone returns a copy suitable for one concurrent worker: the config's
@@ -56,6 +147,7 @@ func (e *Env) Clone(nproc int) *Env {
 		VisqolBin:   e.VisqolBin,
 		VisqolModel: e.VisqolModel,
 		Version:     e.Version,
+		QState:      e.QState,
 	}
 	ne.Audio = &audio.Engine{R: r, Log: e.Log, C: &c, VisqolBin: e.VisqolBin}
 	ne.Img = native.New(&c, r, e.Tools, e.Log)

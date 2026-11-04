@@ -53,6 +53,9 @@ func Run(c *config.Config, log *logx.Logger) int {
 	}
 	e.Audio = &audio.Engine{R: e.R, Log: log, C: c}
 	e.Img = native.New(c, e.R, tr, log)
+	if c.QAuto {
+		e.QState = core.NewQState(c.QMin, c.QMax)
+	}
 
 	log.Append("ffmpeg: " + e.R.Version())
 

@@ -17,6 +17,15 @@ same.
 (and therefore smallest file) still passing the VMAF gate. For images the
 search runs in the opposite direction: the lowest encoder quality that passes.
 
+**Adaptive quality window** — `--q-auto` shares `q-min`/`q-max` across a batch.
+The first input searches the full configured range from its midpoint. After a
+pass at `q*`, the next input probes `q-min` first (raised by at most 5 and never
+above `q*`), while `q-max` keeps the largest passing quality. A search that
+finds nothing grows `q-max` by 5, up to 100, searching only the new slice. The
+probe is not a hard bound: the binary search still halves below it and always
+reports the lowest passing `q`. If even `q=100` fails, the file is encoded at
+100 and `q-max` becomes 100.
+
 **Quality tier** — Video search passes use the fast encoder settings
 (`SVT_FAST`, `AOM_FAST`, ...); the final encode uses the quality tier
 (`SVT_QUALITY`, ...). The report's `mean_vmaf` is measured on that final file,

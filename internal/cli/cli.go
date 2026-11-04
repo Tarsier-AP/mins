@@ -33,6 +33,7 @@ type Options struct {
 	CRFMax             string
 	QMin               string
 	QMax               string
+	QAuto              bool
 	BRMin              string
 	BRMax              string
 	AudioMetric        string
@@ -178,6 +179,8 @@ func Parse(argv []string) (*Options, error) {
 			}
 			o.QMax = v
 			i++
+		case "--q-auto":
+			o.QAuto = true
 		case "--br-min":
 			v, err := need(i, a)
 			if err != nil {
@@ -408,6 +411,13 @@ the VMAF gate. --img-encoder magick is therefore rejected.
   --cq-max         alias of --crf-max
   --q-min          image / animate: lower quality bound (default: 0)
   --q-max          image / animate: upper quality bound (default: 95)
+  --q-auto         image / animate: adapt the binary search window across
+                   inputs. The first input starts at the midpoint of the full
+                   range; later inputs probe the shared q-min first (raised by
+                   at most 5 per passing input). The upper bound keeps the
+                   largest passing quality and grows in steps of 5, up to 100,
+                   when nothing passes. The lowest passing q is always used.
+                   Works for a single input.
   --audio-band     audio / --audio-search: (asisdr/asdr/apsnr only) LOW:HIGH Hz
   --audio-search   video: search each kept audio track's bitrate
   --br-min N       audio / --audio-search: lower bitrate bound, kbps (32)
