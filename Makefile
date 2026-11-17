@@ -49,6 +49,7 @@ integration: build
 #   make parity MINS_SH=~/shell-scripts/mins/mins.sh
 parity: build
 	@test -n "$(MINS_SH)" || { echo "set MINS_SH=/path/to/mins.sh" >&2; exit 2; }
+	@test -f "$(MINS_SH)" || { echo "MINS_SH=$(MINS_SH) does not exist" >&2; exit 2; }
 	MINS_SH="$(MINS_SH)" $(GO) test -tags=integration -run 'TestParity' -v ./internal/integration
 
 release:
