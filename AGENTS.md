@@ -49,10 +49,14 @@ make parity MINS_SH=/path/to/mins.sh          # v1.17.0 parity diff
 - `make build` produces a development binary that resolves tools via
   `MINS_<NAME>` override → `MINS_TOOLS_DIR` → embedded cache → `PATH`. A fresh
   clone has no embedded assets (they are gitignored), so dev runs need FFmpeg
-  and codec tools on `PATH` or `MINS_*` overrides.
+  and codec tools on `PATH` or `MINS_*` overrides (`MINS_FFMPEG`,
+  `MINS_FFPROBE`, `MINS_VISQOL`; note `MINS_VISQOL_MODEL` points at the
+  ViSQOL model file, not a tool).
 - `make toolchain` compiles FFmpeg/libaom/libjxl/libvmaf/ViSQOL from pinned
-  sources — slow and dependency-heavy. Only needed for `make bundle`/release;
-  don't run it unless the task requires embedded assets.
+  sources — slow and dependency-heavy (needs CMake, Ninja, Meson, NASM,
+  pkg-config, autotools, a C/C++ compiler, and Bazelisk for ViSQOL). Only
+  needed for `make bundle`/release; don't run it unless the task requires
+  embedded assets.
 - `make bundle` packages the host toolchain into
   `internal/tools/assets/<os>_<arch>/`, then builds. `make release` requires
   assets for all five targets.
@@ -74,7 +78,8 @@ tools and builds a shared `core.Env`, then dispatches whole files to
 `internal/video`, `internal/image` (via `internal/native` backends), and
 `internal/audioproc`. All media work is subprocess orchestration through
 `internal/ffmpeg`; probes in `internal/media`; escaping in `internal/escape`;
-results/logs/TUI in `internal/result`, `internal/logx`, `internal/tui`.
+libvmaf JSON log parsing in `internal/vmaf`; results/logs/TUI in
+`internal/result`, `internal/logx`, `internal/tui`.
 
 - Workers are goroutines inside one process (`--instances`, `--fbf-workers`);
   there is no recursive `mins` invocation.
