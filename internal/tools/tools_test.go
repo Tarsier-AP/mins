@@ -7,6 +7,10 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"sort"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -114,4 +118,89 @@ func TestPathUsesToolsDirAndEnvOverride(t *testing.T) {
 	if _, err := New(fstest.MapFS{}, "testplat").Path("ffmpeg"); err == nil {
 		t.Fatal("expected an error for a missing override")
 	}
+}
+
+// TestPackageListsMatchToolNames pins the three copies of the bundle list
+// together: ToolNames below, the required/optional lists in
+// tools/package-assets.sh, and the audit list in tools/build.sh. A
+// self-contained release must carry every tool the code can invoke; drift
+// between these lists would ship a binary with silent holes or package a
+// tool nothing calls.
+func TestPackageListsMatchToolNames(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate this source file")
+	}
+	// .../<repo>/internal/tools/tools_test.go -> repo root.
+	root := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	read := func(rel string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	group := func(src, pattern, name string) []string {
+		t.Helper()
+		m := regexp.MustCompile(pattern).FindStringSubmatch(src)
+		if m == nil {
+			t.Fatalf("cannot find the %s list", name)
+		}
+		return strings.Fields(strings.ReplaceAll(m[1], "\\", " "))
+	}
+	pkg := read("tools/package-assets.sh")
+	build := read("tools/build.sh")
+	required := group(pkg, `(?m)^tools=\(([^)]*)\)`, "required")
+	optional := group(pkg, `(?m)^optional=\(([^)]*)\)`, "optional")
+	audited := group(build, `(?s)for t in ([^;]+); do`, "audit")
+
+	known := map[string]bool{}
+	for _, n := range ToolNames {
+		known[n] = true
+	}
+	for _, list := range []struct{ name string; tools []string }{
+		{"required", required}, {"optional", optional}, {"audit", audited},
+	} {
+		for _, n := range list.tools {
+			if !known[n] {
+				t.Errorf("%s list names %q, which is not in ToolNames", list.name, n)
+			}
+		}
+	}
+	optionalSet := map[string]bool{}
+	for _, n := range optional {
+		optionalSet[n] = true
+	}
+	var fromToolNames []string
+	for _, n := range ToolNames {
+		if !optionalSet[n] {
+			fromToolNames = append(fromToolNames, n)
+		}
+	}
+	if !sameSet(required, fromToolNames) {
+		t.Errorf("required list %v != ToolNames minus optional %v", required, fromToolNames)
+	}
+	if !sameSet(audited, required) {
+		t.Errorf("build.sh audit list %v != required list %v", audited, required)
+	}
+	if len(optionalSet) == 0 {
+		t.Error("no optional tools declared; visqol must stay droppable")
+	}
+}
+
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	x := append([]string(nil), a...)
+	y := append([]string(nil), b...)
+	sort.Strings(x)
+	sort.Strings(y)
+	for i := range x {
+		if x[i] != y[i] {
+			return false
+		}
+	}
+	return true
 }

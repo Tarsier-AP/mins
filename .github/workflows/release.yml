@@ -100,6 +100,9 @@ jobs:
           bash tools/fetch-sources.sh
           WITH_VISQOL=0 bash tools/build.sh
           bash tools/build-visqol.sh || echo "::warning::ViSQOL build failed; VISQOL_BIN will be required at runtime"
+          # ViSQOL is built outside build.sh, so audit it here and drop it
+          # from the prefix when it is not portable.
+          bash tools/audit-optional.sh
 
       - name: Build toolchain (Windows)
         if: runner.os == 'Windows'
@@ -114,6 +117,9 @@ jobs:
         shell: msys2 {0}
         run: |
           bash tools/build-visqol.sh
+          # ViSQOL is built outside build.sh, so audit it here and drop it
+          # from the prefix when it is not portable.
+          bash tools/audit-optional.sh
 
       - name: Package embedded assets
         run: bash tools/package-assets.sh ${{ matrix.os }}_${{ matrix.arch }}

@@ -107,7 +107,11 @@ automatically.
 
 The build is reproducible from `tools/versions.env`. On Linux the packaged
 executables are fully static; macOS uses only the system libc/libc++ and
-frameworks. ViSQOL is built without TensorFlow/TFLite (see
+frameworks. Packaging is strict: a release build fails if any required tool
+is missing for its target, and ViSQOL ships only together with its SVR
+model. What the code can invoke, what gets packaged, and what the toolchain
+build audits are pinned together by a test in `internal/tools`. ViSQOL is
+built without TensorFlow/TFLite (see
 `tools/patches/`), so its optional deep-lattice speech model is unavailable;
 audio quality measurement (the mode mins uses) and the default speech mapper
 are unaffected.

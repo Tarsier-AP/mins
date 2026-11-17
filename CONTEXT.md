@@ -60,6 +60,12 @@ way. Comparing the flattened pixels is what makes transparent images stable.
 `tr -c 'A-Za-z0-9._-' '_'` on a string with a trailing newline produces a
 trailing underscore; the Go `tagOf` keeps that quirk for filename parity.
 
+**Self-contained** — The property of a release binary: every tool it runs
+(FFmpeg, the codec CLIs, ViSQOL) travels inside it and is unpacked to a
+per-user cache on first run, so the user installs nothing. Development
+builds are not self-contained; without embedded assets they resolve tools
+from PATH.
+
 ## Invariants
 
 - **Output names**

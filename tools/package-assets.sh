@@ -63,6 +63,17 @@ else
   echo "package: ViSQOL model not built; skipping (optional)" >&2
 fi
 
+# A release ships ViSQOL and its SVR model together or not at all: a visqol
+# binary without the model cannot run, and a bundled model nobody uses is
+# dead weight. Both are optional (see above), so they are either both
+# skipped by the build or both packaged here.
+visqol_shipped=$([[ -f $dest/visqol$ext.gz ]] && echo yes || echo no)
+model_shipped=$([[ -f $dest/libsvm_nu_svr_model.txt.gz ]] && echo yes || echo no)
+if [[ $visqol_shipped != $model_shipped ]]; then
+  echo "package: visqol ($visqol_shipped) and its SVR model ($model_shipped) must ship together" >&2
+  exit 1
+fi
+
 # The .keep file keeps the empty asset directory in git.
 : >"$dest/.keep"
 echo "package: $dest"

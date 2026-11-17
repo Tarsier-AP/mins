@@ -110,6 +110,9 @@ build produces a non-portable binary, it is dropped and mins asks for
 - [x] release archives
 - [x] static-link / portability audit in the toolchain build
 - [x] local linux/amd64 bundled-toolchain build and embedded smoke test
+- [x] strict release bundles: packaging fails on missing required tools,
+      ViSQOL ships only with its model, non-portable ViSQOL is dropped, and
+      the bundle lists are pinned together by a unit test
 - [ ] first green CI run for all five targets (native toolchain builds need
       runner validation; ViSQOL/Bazel and macOS/Windows link closure are the
       remaining unknowns)
