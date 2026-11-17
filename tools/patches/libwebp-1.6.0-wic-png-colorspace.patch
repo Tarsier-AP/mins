@@ -1,0 +1,53 @@
+diff -Naur a/imageio/image_enc.c b/imageio/image_enc.c
+--- a/imageio/image_enc.c	2026-11-18 00:59:12.638594774 +0300
++++ b/imageio/image_enc.c	2026-11-18 00:59:12.679057006 +0300
+@@ -79,14 +79,24 @@
+ static HRESULT WriteUsingWIC(const char* out_file_name, int use_stdout,
+                              REFGUID container_guid,
+                              uint8_t* rgb, int stride,
+-                             uint32_t width, uint32_t height, int has_alpha) {
++                             uint32_t width, uint32_t height, int has_alpha,
++                             int is_bgr) {
+   HRESULT hr = S_OK;
+   IWICImagingFactory* factory = NULL;
+   IWICBitmapFrameEncode* frame = NULL;
+   IWICBitmapEncoder* encoder = NULL;
+   IStream* stream = NULL;
+-  WICPixelFormatGUID pixel_format = has_alpha ? GUID_WICPixelFormat32bppBGRA
+-                                              : GUID_WICPixelFormat24bppBGR;
++  // The caller hands us raw bytes with no conversion (see WebPWritePNG), so
++  // the WIC format must match the buffer's actual byte order, or PNG output
++  // ends up with the red and blue channels swapped.
++  WICPixelFormatGUID pixel_format;
++  if (has_alpha) {
++    pixel_format = is_bgr ? GUID_WICPixelFormat32bppBGRA
++                          : GUID_WICPixelFormat32bppRGBA;
++  } else {
++    pixel_format = is_bgr ? GUID_WICPixelFormat24bppBGR
++                          : GUID_WICPixelFormat24bppRGB;
++  }
+ 
+   if (out_file_name == NULL || rgb == NULL) return E_INVALIDARG;
+ 
+@@ -152,9 +162,18 @@
+   const int stride = buffer->u.RGBA.stride;
+   const int has_alpha = WebPIsAlphaMode(buffer->colorspace);
+ 
+-  return SUCCEEDED(WriteUsingWIC(out_file_name, use_stdout,
+-                                 MAKE_REFGUID(GUID_ContainerFormatPng),
+-                                 rgb, stride, width, height, has_alpha));
++  // BGR-order modes keep the WIC BGR formats; everything else (the RGBA
++  // buffer anim_dump and friends decode into) needs the RGB formats.
++  {
++    const int is_bgr = (buffer->colorspace == MODE_BGR ||
++                        buffer->colorspace == MODE_BGRA ||
++                        buffer->colorspace == MODE_bgrA);
++
++    return SUCCEEDED(WriteUsingWIC(out_file_name, use_stdout,
++                                   MAKE_REFGUID(GUID_ContainerFormatPng),
++                                   rgb, stride, width, height, has_alpha,
++                                   is_bgr));
++  }
+ }
+ 
+ #elif defined(WEBP_HAVE_PNG)    // !HAVE_WINCODEC_H

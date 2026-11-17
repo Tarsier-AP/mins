@@ -192,6 +192,7 @@ jobs:
             done
             if [ -s "$work/clip.webp" ]; then
               rm -rf "$work/probe"
+              mkdir -p "$work/probe"
               if "tools/.build/prefix/bin/anim_dump$ext" -folder "$work/probe" -prefix f- "$work/clip.webp"; then
                 ls -la "$work/probe"
               else

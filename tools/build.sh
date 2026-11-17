@@ -258,8 +258,15 @@ STATIC_IMG_DEPS=(
 )
 
 # ---------------------------------------------------------------- libwebp
+# On Windows libwebp's PNG writer goes through the Windows Imaging
+# Component and hard-codes BGR pixel formats; anim_dump feeds it RGBA
+# bytes, so every PNG came out with red and blue swapped and the VMAF
+# gate cratered on Windows (dwebp was unaffected: it decodes to BGR for
+# PNG output). The patch picks the WIC format from the buffer's actual
+# colorspace.
 log "libwebp $LIBWEBP_VERSION"
 unpack_top "$SRC/libwebp-$LIBWEBP_VERSION.tar.gz" "$BUILD/webp"
+patch -d "$BUILD/webp" -p1 <"$root/tools/patches/libwebp-$LIBWEBP_VERSION-wic-png-colorspace.patch"
 cmake_build "$BUILD/webp" "$BUILD/webp/build" \
   -DWEBP_BUILD_ANIM_UTILS=ON \
   -DWEBP_BUILD_CWEBP=ON \
