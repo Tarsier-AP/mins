@@ -123,6 +123,10 @@ build produces a non-portable binary, it is dropped and mins asks for
 2. `make build` — local binary using `PATH` tools or `MINS_*` overrides.
 3. `make fixtures` — generated media under `testdata/generated/`.
 4. `make integration` — runs the binary against fixtures.
-5. `make parity MINS_SH=...` — diffs logs/reports against v1.17.0.
+5. `make parity MINS_SH=...` — diffs logs/reports against v1.17.0. Both
+   sides must measure with the same toolchain: put the built prefix first
+   on `PATH` (`PATH=$PWD/tools/.build/prefix/bin:$PATH`) or the Go binary
+   compares its embedded FFmpeg/libvmaf against the system one, and the
+   small VMAF deltas flip gate decisions at the boundary.
 6. `make release` — five archives + `sha256sums.txt` (needs embedded assets).
 
