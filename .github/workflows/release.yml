@@ -16,7 +16,7 @@ jobs:
   build:
     name: ${{ matrix.os }}/${{ matrix.arch }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - os: linux
@@ -185,20 +185,81 @@ jobs:
           run_embedded --mode animate --target 80 --img-fmt webp "$work/clip.mp4" || {
             echo "::error::animate smoke failed; dumping diagnostics"
             ls -la "$work"
-            for f in "$work"/mins-logs/*; do
-              if [ -e "$f" ]; then
-                echo "--- $f"
-                tail -40 "$f"
-              fi
+            # mins writes mins-logs/ relative to its cwd (the repo root), not
+            # to the work dir; dump both.
+            for d in "$work/mins-logs" "$PWD/mins-logs"; do
+              for f in "$d"/*; do
+                if [ -e "$f" ]; then
+                  echo "--- $f"
+                  tail -40 "$f"
+                fi
+              done
             done
             if [ -s "$work/clip.webp" ]; then
-              rm -rf "$work/probe"
-              mkdir -p "$work/probe"
-              if "tools/.build/prefix/bin/anim_dump$ext" -folder "$work/probe" -prefix f- "$work/clip.webp"; then
+              ff="tools/.build/prefix/bin/ffmpeg$ext"
+              dump="tools/.build/prefix/bin/anim_dump$ext"
+              enc="tools/.build/prefix/bin/img2webp$ext"
+              rm -rf "$work/probe" "$work/probe2" "$work/refprobe" "$work/ffd"
+              mkdir -p "$work/probe" "$work/probe2" "$work/refprobe" "$work/ffd"
+              # N1: the same comparison the gate makes (anim_dump decode of
+              # the produced clip.webp).
+              if "$dump" -folder "$work/probe" -prefix f- "$work/clip.webp" >"$work/probe.log" 2>&1; then
                 ls -la "$work/probe"
               else
-                echo "anim_dump probe failed"
+                echo "anim_dump probe failed:"
+                head -5 "$work/probe.log"
               fi
+              # Reference frames extracted exactly like mins extracts them.
+              "$ff" -hide_banner -loglevel error -y -i "$work/clip.mp4" -map 0:V:0 -an -sn \
+                -vf fps=10 "$work/refprobe/f-%06d.png"
+              ls "$work/probe" "$work/refprobe" 2>/dev/null || true
+              # A red/blue channel swap shows up as swapped U/V averages.
+              sigtxt="$work/sig.txt"
+              vlp="$work/diag.vmaf.json"
+              # Paths inside filter strings are not rewritten by MSYS to
+              # native form; use a drive-letter path on Windows.
+              if command -v cygpath >/dev/null; then
+                sigtxt=$(cygpath -m "$sigtxt")
+                vlp=$(cygpath -m "$vlp")
+              fi
+              for img in "$work/probe/f-0000.png" "$work/refprobe/f-000001.png"; do
+                if [ -f "$img" ]; then
+                  echo "--- signalstats $(basename "$img")"
+                  "$ff" -hide_banner -loglevel error -i "$img" \
+                    -vf "signalstats,metadata=print:key=lavfi.signalstats.:file=$sigtxt" -f null - 2>/dev/null
+                  grep -E 'signalstats\.(YAVG|UAVG|VAVG)=' "$work/sig.txt" 2>/dev/null | head -6 || true
+                fi
+              done
+              vmaf_diag() { # <dir> <start_number>
+                "$ff" -hide_banner -loglevel error -nostats -y \
+                  -framerate 1 -start_number "$2" -i "$1/f-%04d.png" \
+                  -framerate 1 -i "$work/refprobe/f-%06d.png" \
+                  -lavfi "[0:v]format=yuv420p,setpts=PTS-STARTPTS[d];[1:v]format=yuv420p,setpts=PTS-STARTPTS[r];[d][r]libvmaf=log_path=$vlp:log_fmt=json" \
+                  -f null - >"$work/diag.log" 2>&1 || head -5 "$work/diag.log"
+                grep -A 6 '"metric": "vmaf"' "$vlp" 2>/dev/null | grep '"mean"' | head -1 || true
+                grep -o '"vmaf": "[^"]*"' "$vlp" 2>/dev/null | tail -1 || true
+              }
+              echo "--- N1 vmaf: anim_dump decode of clip.webp vs refprobe"
+              vmaf_diag "$work/probe" 0
+              # N2: fresh encode of the reference frames with mins' exact
+              # flags, then the same anim_dump decode.
+              frames=()
+              for f in "$work"/refprobe/f-*.png; do frames+=(-d 100 "$f"); done
+              if "$enc" -loop 0 -lossy -q 95 -m 6 "${frames[@]}" -o "$work/fresh.webp" >"$work/fresh.log" 2>&1 \
+                 && "$dump" -folder "$work/probe2" -prefix f- "$work/fresh.webp" >"$work/probe2.log" 2>&1; then
+                echo "--- N2 vmaf: fresh img2webp re-encode, anim_dump decode vs refprobe"
+                vmaf_diag "$work/probe2" 0
+              else
+                echo "N2 fresh encode/decode failed:"
+                head -5 "$work/fresh.log" "$work/probe2.log" 2>/dev/null
+              fi
+              # N3: ffmpeg decodes clip.webp directly, bypassing anim_dump's
+              # WIC save path entirely.
+              "$ff" -hide_banner -loglevel error -y -i "$work/clip.webp" -fps_mode passthrough -start_number 0 \
+                "$work/ffd/f-%04d.png" >"$work/ffd.log" 2>&1
+              echo "--- N3 vmaf: ffmpeg decode of clip.webp vs refprobe"
+              ls "$work/ffd" 2>/dev/null || true
+              vmaf_diag "$work/ffd" 0
             fi
             exit 1
           }

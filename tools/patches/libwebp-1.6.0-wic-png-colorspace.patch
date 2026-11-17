@@ -1,53 +1,58 @@
 diff -Naur a/imageio/image_enc.c b/imageio/image_enc.c
---- a/imageio/image_enc.c	2026-11-18 00:59:12.638594774 +0300
-+++ b/imageio/image_enc.c	2026-11-18 00:59:12.679057006 +0300
-@@ -79,14 +79,24 @@
- static HRESULT WriteUsingWIC(const char* out_file_name, int use_stdout,
-                              REFGUID container_guid,
-                              uint8_t* rgb, int stride,
--                             uint32_t width, uint32_t height, int has_alpha) {
-+                             uint32_t width, uint32_t height, int has_alpha,
-+                             int is_bgr) {
-   HRESULT hr = S_OK;
-   IWICImagingFactory* factory = NULL;
-   IWICBitmapFrameEncode* frame = NULL;
-   IWICBitmapEncoder* encoder = NULL;
-   IStream* stream = NULL;
--  WICPixelFormatGUID pixel_format = has_alpha ? GUID_WICPixelFormat32bppBGRA
--                                              : GUID_WICPixelFormat24bppBGR;
-+  // The caller hands us raw bytes with no conversion (see WebPWritePNG), so
-+  // the WIC format must match the buffer's actual byte order, or PNG output
-+  // ends up with the red and blue channels swapped.
-+  WICPixelFormatGUID pixel_format;
-+  if (has_alpha) {
-+    pixel_format = is_bgr ? GUID_WICPixelFormat32bppBGRA
-+                          : GUID_WICPixelFormat32bppRGBA;
-+  } else {
-+    pixel_format = is_bgr ? GUID_WICPixelFormat24bppBGR
-+                          : GUID_WICPixelFormat24bppRGB;
-+  }
+--- a/imageio/image_enc.c	2026-11-18 02:06:54.530151452 +0300
++++ b/imageio/image_enc.c	2026-11-18 02:06:54.543751046 +0300
+@@ -13,6 +13,7 @@
  
-   if (out_file_name == NULL || rgb == NULL) return E_INVALIDARG;
+ #include <assert.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <string.h>
  
-@@ -152,9 +162,18 @@
+ #ifdef WEBP_HAVE_PNG
+@@ -148,13 +149,41 @@
+                  const WebPDecBuffer* const buffer) {
+   const uint32_t width = buffer->width;
+   const uint32_t height = buffer->height;
+-  uint8_t* const rgb = buffer->u.RGBA.rgba;
++  uint8_t* rgb = buffer->u.RGBA.rgba;
    const int stride = buffer->u.RGBA.stride;
    const int has_alpha = WebPIsAlphaMode(buffer->colorspace);
- 
+-
 -  return SUCCEEDED(WriteUsingWIC(out_file_name, use_stdout,
 -                                 MAKE_REFGUID(GUID_ContainerFormatPng),
 -                                 rgb, stride, width, height, has_alpha));
-+  // BGR-order modes keep the WIC BGR formats; everything else (the RGBA
-+  // buffer anim_dump and friends decode into) needs the RGB formats.
-+  {
-+    const int is_bgr = (buffer->colorspace == MODE_BGR ||
-+                        buffer->colorspace == MODE_BGRA ||
-+                        buffer->colorspace == MODE_bgrA);
-+
-+    return SUCCEEDED(WriteUsingWIC(out_file_name, use_stdout,
-+                                   MAKE_REFGUID(GUID_ContainerFormatPng),
-+                                   rgb, stride, width, height, has_alpha,
-+                                   is_bgr));
++  int ok;
++  // WIC's PNG encoder substitutes unsupported pixel formats silently
++  // (SetPixelFormat() is [in, out] and returns the closest supported one),
++  // and its BGR-family formats are the ones it reliably honors. Buffers
++  // decoded in RGB order (e.g. anim_dump's MODE_RGBA canvas) must be
++  // channel-swapped into BGR order here, or the PNG comes out with its red
++  // and blue channels swapped.
++  const int is_bgr = (buffer->colorspace == MODE_BGR ||
++                      buffer->colorspace == MODE_BGRA ||
++                      buffer->colorspace == MODE_bgrA);
++  if (!is_bgr) {
++    const uint32_t bpp = has_alpha ? 4 : 3;
++    uint32_t x, y;
++    uint8_t* bgr = (uint8_t*)malloc((size_t)stride * height);
++    if (bgr == NULL) return 0;
++    for (y = 0; y < height; ++y) {
++      const uint8_t* src = rgb + (size_t)y * stride;
++      uint8_t* dst = bgr + (size_t)y * stride;
++      for (x = 0; x < width; ++x) {
++        dst[x * bpp + 0] = src[x * bpp + 2];
++        dst[x * bpp + 1] = src[x * bpp + 1];
++        dst[x * bpp + 2] = src[x * bpp + 0];
++        if (bpp == 4) dst[x * bpp + 3] = src[x * bpp + 3];
++      }
++    }
++    rgb = bgr;
 +  }
++  ok = SUCCEEDED(WriteUsingWIC(out_file_name, use_stdout,
++                               MAKE_REFGUID(GUID_ContainerFormatPng),
++                               rgb, stride, width, height, has_alpha));
++  if (rgb != buffer->u.RGBA.rgba) free(rgb);
++  return ok;
  }
  
  #elif defined(WEBP_HAVE_PNG)    // !HAVE_WINCODEC_H
