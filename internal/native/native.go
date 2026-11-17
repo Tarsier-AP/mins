@@ -252,27 +252,30 @@ func (b *Backend) DecodeFrames(in, dir string, want int, elog string) error {
 	count := func() int { return countPNGs(dir) }
 	switch b.Name {
 	case "libwebp":
-		// libwebp's own dumper first: ffmpeg's VP8 decoder produces
-		// different RGB, and the gate must see what mins.sh saw.
-		if p, err := b.Tools.Path("anim_dump"); err == nil {
-			tmp := dir + ".dump"
-			_ = os.RemoveAll(tmp)
-			_ = os.MkdirAll(tmp, 0o755)
-			cmd := exec.Command(p, "-folder", tmp, "-prefix", "f-", in)
-			out, derr := cmd.CombinedOutput()
-			// anim_dump narrates every frame on success ("Decoding file:
-			// ..."); mins.sh only ever surfaced the frame-count mismatch,
-			// so keep its chatter out of the gate error tail.
-			if derr != nil {
-				appendLog(string(out))
-			}
-			renameDump(tmp, dir)
-			_ = os.RemoveAll(tmp)
+		// libwebp's own dumper, with no fallback: ffmpeg's VP8 decoder
+		// produces different RGB than libwebp's, and the gate must see
+		// what mins.sh saw. mins.sh's anim decode either succeeded or
+		// failed with the tool's log — a half-working anim_dump has to
+		// fail the gate, not silently hand it ffmpeg's RGB.
+		p, err := b.Tools.Path("anim_dump")
+		if err != nil {
+			return err
 		}
-		if count() != want {
-			clearPNGs(dir)
-			b.ffmpegDecode(in, dir, appendLog)
+		tmp := dir + ".dump"
+		_ = os.RemoveAll(tmp)
+		_ = os.MkdirAll(tmp, 0o755)
+		cmd := exec.Command(p, "-folder", tmp, "-prefix", "f-", in)
+		out, derr := cmd.CombinedOutput()
+		// anim_dump narrates every frame on success ("Decoding file:
+		// ..."); mins.sh only ever surfaced the frame-count mismatch,
+		// so keep its chatter out of the gate error tail.
+		if derr != nil {
+			appendLog(string(out))
+			_ = os.RemoveAll(tmp)
+			return fmt.Errorf("anim_dump failed: %w", derr)
 		}
+		renameDump(tmp, dir)
+		_ = os.RemoveAll(tmp)
 	case "libavif":
 		b.ffmpegDecode(in, dir, appendLog)
 		if count() != want {

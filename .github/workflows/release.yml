@@ -176,8 +176,30 @@ jobs:
           run_embedded --target 50 --crf-min 20 --crf-max 40 "$work/clip.mp4"
           test -s "$work/clip.av1.mp4"
 
-          # Exercises img2webp + anim_dump from the embedded bundle.
-          run_embedded --mode animate --target 80 --img-fmt webp "$work/clip.mp4"
+          # Exercises img2webp + anim_dump from the embedded bundle. On
+          # failure, dump the run's own logs and probe anim_dump against
+          # the produced animation: that separates a broken anim_dump
+          # (decode side) from a broken img2webp (encode side) without a
+          # second CI round-trip.
+          run_embedded --mode animate --target 80 --img-fmt webp "$work/clip.mp4" || {
+            echo "::error::animate smoke failed; dumping diagnostics"
+            ls -la "$work"
+            for f in "$work"/mins-logs/*; do
+              if [ -e "$f" ]; then
+                echo "--- $f"
+                tail -40 "$f"
+              fi
+            done
+            if [ -s "$work/clip.webp" ]; then
+              rm -rf "$work/probe"
+              if "tools/.build/prefix/bin/anim_dump$ext" -folder "$work/probe" -prefix f- "$work/clip.webp"; then
+                ls -la "$work/probe"
+              else
+                echo "anim_dump probe failed"
+              fi
+            fi
+            exit 1
+          }
           test -s "$work/clip.webp"
 
           if [ -x "tools/.build/prefix/bin/visqol$ext" ]; then

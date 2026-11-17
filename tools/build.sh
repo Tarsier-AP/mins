@@ -413,8 +413,10 @@ fi
 # silently skips the models when it is missing (as on MSYS2). The library
 # still builds and ffmpeg links it fine; every VMAF query then fails at
 # runtime with "could not load libvmaf model with version: vmaf_v0.6.1".
-# Require the embedded model data to be present in the archive.
-vmaf_sym=$(nm "$PREFIX/lib/libvmaf.a" 2>/dev/null | awk '$3=="src_vmaf_v0_6_1_json"{print $2}' | head -1)
+# Require the embedded model data to be present in the archive. BSD nm
+# (macOS) prints a leading underscore on symbols; GNU nm does not, so
+# strip it before matching.
+vmaf_sym=$(nm "$PREFIX/lib/libvmaf.a" 2>/dev/null | awk '{s=$3; sub(/^_/,"",s)} s=="src_vmaf_v0_6_1_json"{print $2}' | head -1)
 if [[ -z $vmaf_sym || $vmaf_sym == U ]]; then
   echo "audit: libvmaf.a does not embed built-in model vmaf_v0.6.1 (xxd missing at build time?)" >&2
   audit_failed=1
