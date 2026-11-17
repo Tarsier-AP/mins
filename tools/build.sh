@@ -280,6 +280,10 @@ cmake_build "$BUILD/de265" "$BUILD/de265/build" \
   -DENABLE_SDL=OFF -DENABLE_DEC265=OFF
 
 # ---------------------------------------------------------------- libheif
+# LIBDE265_STATIC_BUILD: libde265's headers declare dllimport on Windows
+# unless its static-build macro is set, and then libheif.a references
+# __imp_de265_* symbols no static archive defines. Harmless on other
+# platforms; only the _WIN32 branch of de265.h reads the macro.
 log "libheif $LIBHEIF_VERSION"
 unpack_top "$SRC/libheif-$LIBHEIF_VERSION.tar.gz" "$BUILD/heif"
 cmake_build "$BUILD/heif" "$BUILD/heif/build" \
@@ -314,12 +318,19 @@ cmake_build "$BUILD/heif" "$BUILD/heif/build" \
   -DENABLE_PLUGIN_LOADING=OFF \
   -DCMAKE_DISABLE_FIND_PACKAGE_TIFF=ON \
   -DCMAKE_FIND_LIBRARY_SUFFIXES="$STATIC_LIB_SUFFIXES" \
+  -DCMAKE_CXX_FLAGS="-DLIBDE265_STATIC_BUILD" \
   -DAOM_LIBRARY="$PREFIX/lib/libaom.a" -DAOM_INCLUDE_DIR="$PREFIX/include" \
   -DLIBDE265_LIBRARY="$PREFIX/lib/libde265.a" \
   -DLIBDE265_INCLUDE_DIR="$PREFIX/include" \
   "${STATIC_IMG_DEPS[@]}"
 
 # ---------------------------------------------------------------- libavif
+# Put the prefix headers first on the compile line: on the macOS runners
+# AppleClang searches /usr/local/include by default, and those images carry
+# Homebrew's newer aom headers. Compiling codec_aom.c against them makes
+# libavif call AOMD_SET_FRAME_SIZE_LIMIT (aom >= 3.14) that the pinned
+# libaom 3.13.1 does not implement, and avifdec fails with
+# "Invalid control ID".
 log "libavif $LIBAVIF_VERSION"
 unpack_top "$SRC/libavif-$LIBAVIF_VERSION.tar.gz" "$BUILD/avif"
 cmake_build "$BUILD/avif" "$BUILD/avif/build" \
@@ -329,6 +340,7 @@ cmake_build "$BUILD/avif" "$BUILD/avif/build" \
   -DAVIF_BUILD_EXAMPLES=OFF \
   -DAVIF_BUILD_TESTS=OFF \
   -DAVIF_ENABLE_WERROR=OFF \
+  -DCMAKE_C_FLAGS="-I$PREFIX/include" \
   -DAOM_LIBRARY="$PREFIX/lib/libaom.a" -DAOM_INCLUDE_DIR="$PREFIX/include" \
   "${STATIC_IMG_DEPS[@]}"
 
