@@ -49,7 +49,7 @@ case $os in
     ;;
   MINGW)
     bad=$(objdump -p "$bin" | awk '/DLL Name:/{print $3}' \
-      | grep -viE '^(KERNEL32|USER32|GDI32|ADVAPI32|SHELL32|ole32|OLEAUT32|WS2_32|WSOCK32|IPHLPAPI|bcrypt|crypt32|secur32|COMCTL32|PSAPI|msvcrt|ucrtbase|ntdll|dbghelp|DWMAPI|MF|MFPlat|MFReadWrite)\.dll$' || true)
+      | grep -viE '^(KERNEL32|USER32|GDI32|ADVAPI32|SHELL32|SHLWAPI|ole32|OLEAUT32|WS2_32|WSOCK32|IPHLPAPI|bcrypt|crypt32|secur32|COMCTL32|PSAPI|msvcrt|ucrtbase|ntdll|dbghelp|DWMAPI|MF|MFPlat|MFReadWrite|AVICAP32)\.dll$' || true)
     ;;
 esac
 
