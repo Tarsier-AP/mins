@@ -166,6 +166,26 @@ unpack_top "$SRC/libopus-$LIBOPUS_VERSION.tar.gz" "$BUILD/opus"
   make install
 )
 
+# ------------------------------------------------- static giflib + libjpeg-turbo
+# libjxl's tools (cjxl/djxl) pick up GIF/JPEG input decoding through the
+# system find_package(GIF/JPEG), which on macOS resolves to Homebrew dylibs
+# the portability audit rightly rejects. Build the static archives first and
+# point libjxl at them below. libpng follows after libjxl instead, because
+# it links the zlib that libjxl's build produces.
+log "giflib $GIFLIB_VERSION"
+unpack_top "$SRC/giflib-$GIFLIB_VERSION.tar.gz" "$BUILD/giflib"
+make -C "$BUILD/giflib" libgif.a \
+  CC="${CC:-cc}" AR="${AR:-ar}" \
+  CFLAGS="-O2 -std=gnu99 -fPIC"
+install -d "$PREFIX/lib" "$PREFIX/include"
+install -m644 "$BUILD/giflib/libgif.a" "$PREFIX/lib/libgif.a"
+install -m644 "$BUILD/giflib/gif_lib.h" "$PREFIX/include/gif_lib.h"
+
+log "libjpeg-turbo (libjxl vendored)"
+cmake_build "$SRC/libjxl/third_party/libjpeg-turbo" "$BUILD/libjpeg-turbo" \
+  -DCMAKE_INSTALL_LIBDIR="$PREFIX/lib" \
+  -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DWITH_TURBOJPEG=ON
+
 # ---------------------------------------------------------------- libjxl
 log "libjxl $LIBJXL_VERSION"
 if [[ -d $SRC/libjxl ]]; then
@@ -188,6 +208,10 @@ if [[ -d $SRC/libjxl ]]; then
     -DPNG_TOOLS=OFF \
     -DJPEGXL_FORCE_SYSTEM_BROTLI=OFF \
     -DJPEGXL_FORCE_SYSTEM_HWY=OFF \
+    -DGIF_LIBRARY="$PREFIX/lib/libgif.a" \
+    -DGIF_INCLUDE_DIR="$PREFIX/include" \
+    -DJPEG_LIBRARY="$PREFIX/lib/libjpeg.a" \
+    -DJPEG_INCLUDE_DIR="$PREFIX/include" \
     -DCMAKE_FIND_LIBRARY_SUFFIXES="$STATIC_LIB_SUFFIXES"
 else
   echo "libjxl source missing; run tools/fetch-sources.sh" >&2
@@ -199,18 +223,16 @@ fi
 rm -f "$PREFIX"/lib/libz.so* "$PREFIX"/lib/libz*.dylib \
   "$PREFIX"/lib/libz*.dll.a "$PREFIX"/bin/libz*.dll "$PREFIX"/bin/zlib*.dll
 
-# ---------------------------------------------------------------- libpng / libjpeg-turbo
-# The WebP and HEIF CLIs decode PNG/JPEG input. Build static copies from the
-# versions vendored by libjxl, so the bundle does not depend on a distro
-# shipping libpng.a/libjpeg.a.
-log "libpng + libjpeg-turbo (libjxl vendored)"
+# ---------------------------------------------------------------- libpng
+# The WebP and HEIF CLIs decode PNG input. Build a static copy from the
+# version vendored by libjxl, so the bundle does not depend on a distro
+# shipping libpng.a. This needs the zlib produced by libjxl's build, which
+# is why it comes after libjxl; libjpeg-turbo and giflib were built before.
+log "libpng (libjxl vendored)"
 cmake_build "$SRC/libjxl/third_party/libpng" "$BUILD/libpng" \
   -DPNG_SHARED=OFF -DPNG_STATIC=ON -DPNG_TESTS=OFF -DPNG_TOOLS=OFF \
   -DZLIB_ROOT="$PREFIX" -DZLIB_LIBRARY="$PREFIX/lib/libz.a" \
   -DZLIB_INCLUDE_DIR="$PREFIX/include"
-cmake_build "$SRC/libjxl/third_party/libjpeg-turbo" "$BUILD/libjpeg-turbo" \
-  -DCMAKE_INSTALL_LIBDIR="$PREFIX/lib" \
-  -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DWITH_TURBOJPEG=ON
 
 # CMake's FindPNG/FindJPEG prefer shared libraries even when the matching
 # static archive is already in $PREFIX. Point them at the archives explicitly
@@ -228,18 +250,6 @@ STATIC_IMG_DEPS=(
   -DGIF_LIBRARY="$PREFIX/lib/libgif.a"
   -DGIF_INCLUDE_DIR="$PREFIX/include"
 )
-
-# ---------------------------------------------------------------- giflib
-# libwebp's anim_dump links giflib. Build the static archive here so the
-# bundle does not depend on the host shipping libgif.a next to libgif.so.
-log "giflib $GIFLIB_VERSION"
-unpack_top "$SRC/giflib-$GIFLIB_VERSION.tar.gz" "$BUILD/giflib"
-make -C "$BUILD/giflib" libgif.a \
-  CC="${CC:-cc}" AR="${AR:-ar}" \
-  CFLAGS="-O2 -std=gnu99 -fPIC"
-install -d "$PREFIX/lib" "$PREFIX/include"
-install -m644 "$BUILD/giflib/libgif.a" "$PREFIX/lib/libgif.a"
-install -m644 "$BUILD/giflib/gif_lib.h" "$PREFIX/include/gif_lib.h"
 
 # ---------------------------------------------------------------- libwebp
 log "libwebp $LIBWEBP_VERSION"
