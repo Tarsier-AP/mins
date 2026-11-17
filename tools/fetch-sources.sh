@@ -50,6 +50,7 @@ download "$LIBAVIF_URL"   "$src/libavif-$LIBAVIF_VERSION.tar.gz"
 download "$LIBHEIF_URL"   "$src/libheif-$LIBHEIF_VERSION.tar.gz"
 download "$LIBDE265_URL"  "$src/libde265-$LIBDE265_VERSION.tar.gz"
 download "$LIBOPUS_URL"   "$src/libopus-$LIBOPUS_VERSION.tar.gz"
+download "$NASM_URL"      "$src/nasm-$NASM_VERSION.tar.xz"
 download "$VISQOL_URL"    "$src/visqol-$VISQOL_VERSION.tar.gz"
 
 # libjxl: submodules (highway, brotli, skcms, ...) are required.

@@ -2,8 +2,9 @@
 # Build the pinned media toolchain from source into $PREFIX.
 #
 # Intended to run on a native runner (Linux, macOS, or MSYS2 on Windows).
-# Requires: cmake, ninja, meson, pkg-config, nasm, git, a C/C++ compiler, and
-# (for ViSQOL) bazel. Run tools/fetch-sources.sh first.
+# Requires: cmake, ninja, meson, pkg-config, git, a C/C++ compiler, and
+# (for ViSQOL) bazel; nasm is built from source into the prefix. Run
+# tools/fetch-sources.sh first.
 #
 #   PREFIX=/opt/mins JOBS=8 bash tools/build.sh
 #
@@ -109,6 +110,22 @@ cmake_build() { # src builddir extra...
   cmake --build "$dir" -j "$JOBS"
   cmake --install "$dir"
 }
+
+# ---------------------------------------------------------------- NASM
+# The host's assembler cannot be trusted: MSYS2, Homebrew, and Arch now ship
+# NASM 3.x, which supports multipass -Ox but no longer lists it in `nasm -hf`,
+# and libaom's test_nasm greps exactly that help text. Build the pinned 2.16
+# release into the prefix and put it first on PATH so SVT-AV1, libaom, and
+# FFmpeg all configure against a known-good assembler.
+log "nasm $NASM_VERSION"
+unpack_top "$SRC/nasm-$NASM_VERSION.tar.xz" "$BUILD/nasm"
+(
+  cd "$BUILD/nasm"
+  ./configure --prefix="$PREFIX"
+  make -j "$JOBS"
+  make install
+)
+export PATH="$PREFIX/bin:$PATH"
 
 # ---------------------------------------------------------------- libvmaf
 log "libvmaf $LIBVMAF_VERSION"

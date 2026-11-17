@@ -12,7 +12,8 @@ darwin/amd64 and darwin/arm64.
 
 Build the Go binary and the toolchain on a native runner for each target
 (`ubuntu-24.04`, `ubuntu-24.04-arm`, `windows-2022`, `macos-15-intel`,
-`macos-14`).
+`macos-15`). `macos-14` was dropped when GitHub stopped supporting the
+image (`The configuration 'macos-14-arm64-us-default' is not supported`).
 Pinned versions live in `tools/versions.env`. Each job packages
 `mins_2.0.0_<os>_<arch>.tar.gz` (`.zip` on Windows) with `LICENSE`,
 `THIRD_PARTY_NOTICES.md`, and a `sha256sums.txt`.
