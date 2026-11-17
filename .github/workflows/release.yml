@@ -87,6 +87,7 @@ jobs:
             mingw-w64-x86_64-lcms2
             mingw-w64-x86_64-brotli
             mingw-w64-x86_64-zlib
+            vim
             autoconf automake libtool git curl unzip zip
 
       - name: Cache sources

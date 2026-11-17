@@ -408,5 +408,16 @@ if [[ -x $PREFIX/bin/visqol$BIN_EXT ]]; then
     rm -f "$PREFIX/bin/visqol$BIN_EXT"
   fi
 fi
+# libvmaf embeds its built-in models at build time by running xxd over the
+# model JSON files — but meson looks for xxd with `required: false` and
+# silently skips the models when it is missing (as on MSYS2). The library
+# still builds and ffmpeg links it fine; every VMAF query then fails at
+# runtime with "could not load libvmaf model with version: vmaf_v0.6.1".
+# Require the embedded model data to be present in the archive.
+vmaf_sym=$(nm "$PREFIX/lib/libvmaf.a" 2>/dev/null | awk '$3=="src_vmaf_v0_6_1_json"{print $2}' | head -1)
+if [[ -z $vmaf_sym || $vmaf_sym == U ]]; then
+  echo "audit: libvmaf.a does not embed built-in model vmaf_v0.6.1 (xxd missing at build time?)" >&2
+  audit_failed=1
+fi
 [[ $audit_failed == 0 ]] || { echo "audit: required tools are not portable" >&2; exit 1; }
 log "toolchain installed under $PREFIX"
