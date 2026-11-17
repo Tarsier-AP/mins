@@ -222,6 +222,12 @@ fi
 # Drop it so the later CMake builds and FFmpeg link the static archive.
 rm -f "$PREFIX"/lib/libz.so* "$PREFIX"/lib/libz*.dylib \
   "$PREFIX"/lib/libz*.dll.a "$PREFIX"/bin/libz*.dll "$PREFIX"/bin/zlib*.dll
+# zlib's CMake renames the static archive to libz.a only on UNIX; MinGW
+# installs libzlibstatic.a. The later builds that link zlib by path (libwebp's
+# dwebp, FFmpeg) expect libz.a, so synthesize the canonical name.
+if [[ ! -f $PREFIX/lib/libz.a && -f $PREFIX/lib/libzlibstatic.a ]]; then
+  cp "$PREFIX/lib/libzlibstatic.a" "$PREFIX/lib/libz.a"
+fi
 
 # ---------------------------------------------------------------- libpng
 # The WebP and HEIF CLIs decode PNG input. Build a static copy from the

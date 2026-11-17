@@ -182,6 +182,24 @@ func (b *Backend) Encode(q int, out string, frames []string, delays []int, elog 
 	return "", fmt.Errorf("unknown native backend %q", b.Name)
 }
 
+// tailLog appends the last lines of a tool's captured output to a preflight
+// error, so a failing encode/decode round trip names the actual cause
+// instead of just "exit status 1".
+func tailLog(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) > 12 {
+		lines = lines[len(lines)-12:]
+	}
+	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
+		return ""
+	}
+	return "\n--- " + filepath.Base(path) + " ---\n" + strings.Join(lines, "\n")
+}
+
 func (b *Backend) run(path string, args []string, elog string) error {
 	f, err := os.Create(elog)
 	if err != nil {
@@ -483,11 +501,14 @@ func (b *Backend) Preflight(animated bool, work string) error {
 	out := filepath.Join(work, "probe."+b.Fmt)
 	elog := filepath.Join(work, "enc.log")
 	if _, err := b.Encode(50, out, []string{src}, nil, elog); err != nil {
-		return fmt.Errorf("%s preflight failed: a still %s could not be written (is it recent enough?): %w", b.Name, b.Fmt, err)
+		return fmt.Errorf("%s preflight failed: a still %s could not be written (is it recent enough?): %w%s",
+			b.Name, b.Fmt, err, tailLog(elog))
 	}
 	dec := filepath.Join(work, "probe_dec.png")
-	if err := b.DecodeStill(out, dec, filepath.Join(work, "dec.log")); err != nil {
-		return fmt.Errorf("%s preflight failed: a still %s could not be read back: %w", b.Name, b.Fmt, err)
+	declog := filepath.Join(work, "dec.log")
+	if err := b.DecodeStill(out, dec, declog); err != nil {
+		return fmt.Errorf("%s preflight failed: a still %s could not be read back: %w%s",
+			b.Name, b.Fmt, err, tailLog(declog))
 	}
 	if animated {
 		a0 := filepath.Join(work, "a0.png")
