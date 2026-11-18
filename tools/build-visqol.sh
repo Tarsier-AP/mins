@@ -40,7 +40,7 @@ elif ! command -v "$BAZEL" >/dev/null 2>&1; then
   echo "visqol: bazel/bazelisk not found; install Bazelisk before building the toolchain" >&2
   exit 1
 fi
-export USE_BAZEL_VERSION=${USE_BAZEL_VERSION:-${BAZEL_VERSION:-5.4.1}}
+export USE_BAZEL_VERSION=${USE_BAZEL_VERSION:-${BAZEL_VERSION:-6.5.0}}
 PATCHES=${PATCHES:-$root/tools/patches}
 OS=$(uname -s)
 EXT=""
@@ -78,19 +78,19 @@ case "$OS" in
 esac
 case "$OS" in
   MINGW*|MSYS*|CYGWIN*)
-    # Bazel's MSVC toolchain enables both the static and the dynamic CRT
-    # feature when building with -c opt; the dynamic one is listed later and
-    # wins, leaving the binary dependent on vcruntime140.dll/msvcp140.dll.
-    # The obvious fix, --features=-dynamic_link_msvcrt_no_debug, is rejected:
-    #   The C++ toolchain '@local_config_cc//:toolchain' unconditionally
-    #   implies feature 'dynamic_link_msvcrt_no_debug', which is unsupported
-    #   by this rule.
-    # Feature flags cannot override an unconditional implication, so pin the
-    # CRT with compiler/linker options instead: /MT selects the static CRT,
-    # and /NODEFAULTLIB:msvcrt.lib cancels the dynamic import library whether
-    # it arrives via /DEFAULTLIB or a linker .drectve. /NODEFAULTLIB is
-    # order-independent and overrides both.
-    BAZEL_ARGS+=(--copt=/MT --linkopt=/NODEFAULTLIB:msvcrt.lib)
+    # The MSVC toolchain enables dynamic_link_msvcrt, whose /MD and
+    # /DEFAULTLIB:msvcrt.lib flag sets are gated on
+    # `not_features = ["static_link_msvcrt"]`. Turning the static feature on
+    # therefore swaps in /MT and /DEFAULTLIB:libcmt.lib and drops the dynamic
+    # ones, which is what the portability audit requires: the binary must not
+    # depend on vcruntime140.dll/msvcp140.dll.
+    #
+    # Do not disable dynamic_link_msvcrt instead: Bazel implies it, and
+    # disabling an implied feature is rejected with "unconditionally implies
+    # feature ... which is unsupported by this rule". Do not pass /MT through
+    # --copt either: MSYS2 rewrites the /MT value into a drive path
+    # (D:/.../msys64/MT) before Bazel ever sees it.
+    BAZEL_ARGS+=(--features=static_link_msvcrt)
     # Bazel's default output base under the runner's profile plus the
     # external-repo paths can exceed Windows' MAX_PATH during this build. Use
     # a short root on the workspace drive: Bazel refuses to create junctions

@@ -80,7 +80,7 @@ Pinned in `tools/versions.env`:
 | libjxl | 0.12.0 |
 | libheif | 1.23.7 |
 | libde265 | 1.0.16 |
-| ViSQOL | 3.3.3 (Bazel 5.4.1, patched) |
+| ViSQOL | 3.3.3 (Bazel 6.5.0, patched) |
 
 CI (`.github/workflows/release.yml`) builds the tools on native runners,
 then cross-compiles the Go binary with the per-target asset directory.
