@@ -57,6 +57,23 @@ case "$OS" in
     # section". --no-gc-sections comes later on the command line and wins.
     BAZEL_ARGS+=(--linkopt=-static --linkopt=-Wl,--no-gc-sections)
     ;;
+  Darwin)
+    # zlib 1.2.11 (pinned by Bazel's WORKSPACE deps) installs its own
+    # `#define fdopen(fd,mode) NULL` fallback for Mac OS whenever fdopen is
+    # not already a macro (zutil.h:140). Modern macOS SDKs declare fdopen as
+    # a plain function, so the guard fires; every later mention of fdopen then
+    # expands to NULL and stops parsing:
+    #   zutil.h:140:33: note: expanded from macro 'fdopen'
+    #   _stdio.h:318:7: error: expected identifier or '('
+    # Defining fdopen on the command line makes zlib's `#ifndef fdopen` guard
+    # false, so the fallback is never installed. A self-referential
+    # -Dfdopen=fdopen counts as defined but expands to itself (the
+    # preprocessor will not re-expand it), so real fdopen tokens still work.
+    # --copt rather than --per_file_copt: the flag has to hold for every
+    # zlib translation unit, and a missed one silently compiles gz_open's
+    # error path to `return NULL`.
+    BAZEL_ARGS+=(--copt=-Dfdopen=fdopen --host_copt=-Dfdopen=fdopen)
+    ;;
   MINGW*|MSYS*|CYGWIN*) EXT=.exe ;;
 esac
 case "$OS" in
@@ -64,9 +81,16 @@ case "$OS" in
     # Bazel's MSVC toolchain enables both the static and the dynamic CRT
     # feature when building with -c opt; the dynamic one is listed later and
     # wins, leaving the binary dependent on vcruntime140.dll/msvcp140.dll.
-    # Disabling it leaves the static feature to supply /MT and
-    # /DEFAULTLIB:libcmt.lib, which is what the portability audit requires.
-    BAZEL_ARGS+=(--features=-dynamic_link_msvcrt_no_debug)
+    # The obvious fix, --features=-dynamic_link_msvcrt_no_debug, is rejected:
+    #   The C++ toolchain '@local_config_cc//:toolchain' unconditionally
+    #   implies feature 'dynamic_link_msvcrt_no_debug', which is unsupported
+    #   by this rule.
+    # Feature flags cannot override an unconditional implication, so pin the
+    # CRT with compiler/linker options instead: /MT selects the static CRT,
+    # and /NODEFAULTLIB:msvcrt.lib cancels the dynamic import library whether
+    # it arrives via /DEFAULTLIB or a linker .drectve. /NODEFAULTLIB is
+    # order-independent and overrides both.
+    BAZEL_ARGS+=(--copt=/MT --linkopt=/NODEFAULTLIB:msvcrt.lib)
     # Bazel's default output base under the runner's profile plus the
     # external-repo paths can exceed Windows' MAX_PATH during this build. Use
     # a short root on the workspace drive: Bazel refuses to create junctions
