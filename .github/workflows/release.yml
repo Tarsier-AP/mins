@@ -16,7 +16,10 @@ jobs:
   build:
     name: ${{ matrix.os }}/${{ matrix.arch }}
     strategy:
-      fail-fast: true
+      # Report every target's own failure in one run. With fail-fast a single
+      # red job cancels the others, which hides what still needs fixing (the
+      # reason the macOS ViSQOL failure stayed unknown for several runs).
+      fail-fast: false
       matrix:
         include:
           - os: linux
@@ -94,13 +97,20 @@ jobs:
             patch
             autoconf automake libtool git curl unzip zip
 
+      # /usr/local/bin does not exist in a stock MSYS2 tree, so `curl -o`
+      # there fails with "(23) client returned ERROR on write". Download next
+      # to the workspace and hand build-visqol.sh the path explicitly.
       - name: Install Bazelisk (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          curl -fsSL -o /usr/local/bin/bazel.exe \
+          dir="$(cygpath -u "$GITHUB_WORKSPACE")/.tools/bin"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 --retry-delay 2 -o "$dir/bazel.exe" \
             https://github.com/bazelbuild/bazelisk/releases/download/v1.30.0/bazelisk-windows-amd64.exe
-          chmod +x /usr/local/bin/bazel.exe
+          chmod +x "$dir/bazel.exe"
+          echo "BAZEL=$dir/bazel.exe" >> "$GITHUB_ENV"
+          echo "$(cygpath -w "$dir")" >> "$GITHUB_PATH"
 
       - name: Cache sources
         uses: actions/cache@v4

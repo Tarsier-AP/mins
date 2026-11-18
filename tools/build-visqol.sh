@@ -15,8 +15,8 @@ SRC=${SRC:-$root/tools/.build/src}
 PREFIX=${PREFIX:-$root/tools/.build/prefix}
 BUILD=${BUILD:-$root/tools/.build/obj}
 # Bazelisk installs as "bazelisk"; a distro package or a symlink is "bazel".
-# MSYS2/Git Bash may expose only the .exe form. Accept any of them so CI's
-# `go install` (Unix) and the pinned Windows download both work.
+# MSYS2/Git Bash may expose only the .exe form. Accept any of them, plus an
+# explicit BAZEL=/path/to/bazel (what CI uses on Windows).
 BAZEL=${BAZEL:-}
 if [[ -z $BAZEL ]]; then
   for candidate in bazel bazelisk bazel.exe bazelisk.exe; do
@@ -26,7 +26,17 @@ if [[ -z $BAZEL ]]; then
     fi
   done
 fi
-if [[ -z $BAZEL ]] || ! command -v "$BAZEL" >/dev/null 2>&1; then
+if [[ -z $BAZEL ]]; then
+  echo "visqol: bazel/bazelisk not found; install Bazelisk before building the toolchain" >&2
+  exit 1
+fi
+# `command -v` only searches PATH; BAZEL may legitimately be a full path.
+if [[ $BAZEL == */* ]]; then
+  if [[ ! -x $BAZEL ]]; then
+    echo "visqol: BAZEL=$BAZEL is not an executable file" >&2
+    exit 1
+  fi
+elif ! command -v "$BAZEL" >/dev/null 2>&1; then
   echo "visqol: bazel/bazelisk not found; install Bazelisk before building the toolchain" >&2
   exit 1
 fi
