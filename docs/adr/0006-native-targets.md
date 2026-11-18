@@ -1,6 +1,6 @@
 # ADR 0006 — Five native targets, CI-built toolchains
 
-**Status:** accepted
+**Status:** accepted (partially superseded by ADR 0008)
 
 ## Context
 
@@ -21,6 +21,9 @@ Pinned versions live in `tools/versions.env`. Each job packages
 ViSQOL on Windows is attempted but not required: `VISQOL_BIN` can override it,
 and a missing binary is a clear runtime error rather than a silent metric
 switch.
+
+**Superseded by ADR 0008:** ViSQOL is now required on every target, Windows
+included. A Windows build without a portable ViSQOL blocks the release.
 
 ## Consequences
 

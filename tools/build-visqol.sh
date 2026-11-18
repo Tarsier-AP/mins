@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Build ViSQOL 3.3.3 with Bazel and install it into $PREFIX.
 #
-# This is best-effort on Windows: CI runs it with `|| true` and then packages
-# whatever exists. A missing visqol is reported by mins at runtime, not
-# silently replaced by a different audio metric.
+# ViSQOL is required by every release bundle (ADR 0008), so a missing Bazel or
+# source tarball is fatal here. WITH_VISQOL=0 in build.sh is a local-dev escape
+# only; tools/package-assets.sh refuses to package a prefix without visqol and
+# its SVR model.
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -13,26 +14,66 @@ source "$root/tools/versions.env"
 SRC=${SRC:-$root/tools/.build/src}
 PREFIX=${PREFIX:-$root/tools/.build/prefix}
 BUILD=${BUILD:-$root/tools/.build/obj}
-BAZEL=${BAZEL:-bazel}
+# Bazelisk installs as "bazelisk"; a distro package or a symlink is "bazel".
+# MSYS2/Git Bash may expose only the .exe form. Accept any of them so CI's
+# `go install` (Unix) and the pinned Windows download both work.
+BAZEL=${BAZEL:-}
+if [[ -z $BAZEL ]]; then
+  for candidate in bazel bazelisk bazel.exe bazelisk.exe; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      BAZEL=$candidate
+      break
+    fi
+  done
+fi
+if [[ -z $BAZEL ]] || ! command -v "$BAZEL" >/dev/null 2>&1; then
+  echo "visqol: bazel/bazelisk not found; install Bazelisk before building the toolchain" >&2
+  exit 1
+fi
 export USE_BAZEL_VERSION=${USE_BAZEL_VERSION:-${BAZEL_VERSION:-5.4.1}}
 PATCHES=${PATCHES:-$root/tools/patches}
 OS=$(uname -s)
 EXT=""
 BAZEL_ARGS=()
+BAZEL_STARTUP_ARGS=()
 case "$OS" in
   Linux)
     EXT=""
-    # Link the C++ runtime and glibc statically too, so the bundled visqol
-    # runs on older distributions than the CI runner.
-    BAZEL_ARGS+=(--linkopt=-static)
+    # Static linking is required so the bundled binary runs on distributions
+    # older than the runner. Bazel's own link line carries -Wl,--gc-sections;
+    # on Ubuntu 24.04's static glibc that discards .text while leaving the
+    # SystemTap .note.stapsdt relocations behind, and ld aborts with
+    # "relocation refers to local symbol .text ... defined in a discarded
+    # section". --no-gc-sections comes later on the command line and wins.
+    BAZEL_ARGS+=(--linkopt=-static --linkopt=-Wl,--no-gc-sections)
     ;;
   MINGW*|MSYS*|CYGWIN*) EXT=.exe ;;
 esac
-
-if ! command -v "$BAZEL" >/dev/null 2>&1; then
-  echo "visqol: bazel not found; skipping" >&2
-  exit 0
+case "$OS" in
+  MINGW*|MSYS*|CYGWIN*)
+    # Bazel's MSVC toolchain enables both the static and the dynamic CRT
+    # feature when building with -c opt; the dynamic one is listed later and
+    # wins, leaving the binary dependent on vcruntime140.dll/msvcp140.dll.
+    # Disabling it leaves the static feature to supply /MT and
+    # /DEFAULTLIB:libcmt.lib, which is what the portability audit requires.
+    BAZEL_ARGS+=(--features=-dynamic_link_msvcrt_no_debug)
+    # Bazel's default output base under the runner's profile plus the
+    # external-repo paths can exceed Windows' MAX_PATH during this build. Use
+    # a short root on the workspace drive: Bazel refuses to create junctions
+    # when the output base lives on another drive.
+    if command -v cygpath >/dev/null 2>&1; then
+      drive=$(cygpath -m "$BUILD")
+      drive=${drive%%:*}
+      BAZEL_STARTUP_ARGS+=(--output_user_root="$drive:/bazel-visqol")
+    fi
+    ;;
+esac
+# Optional shared download cache: CI restores it between runs so the
+# 2022-era WORKSPACE dependencies do not have to be fetched every time.
+if [[ -n ${BAZEL_REPOSITORY_CACHE:-} ]]; then
+  BAZEL_ARGS+=(--repository_cache="$BAZEL_REPOSITORY_CACHE")
 fi
+
 if [[ ! -f $SRC/visqol-$VISQOL_VERSION.tar.gz ]]; then
   echo "visqol: source tarball missing; run tools/fetch-sources.sh" >&2
   exit 1
@@ -49,6 +90,23 @@ patchfile="$PATCHES/visqol-$VISQOL_VERSION-no-tensorflow.patch"
 [[ -f $patchfile ]] || { echo "visqol: missing $patchfile" >&2; exit 1; }
 patch -d "$BUILD/visqol" -p1 <"$patchfile"
 
+model="$BUILD/visqol/model/libsvm_nu_svr_model.txt"
+if [[ ! -f $model ]]; then
+  echo "visqol: source tree has no model/libsvm_nu_svr_model.txt" >&2
+  exit 1
+fi
+if [[ -n ${VISQOL_MODEL_SHA256:-} ]]; then
+  if command -v sha256sum >/dev/null 2>&1; then
+    got=$(sha256sum "$model" | cut -d' ' -f1)
+  else
+    got=$(shasum -a 256 "$model" | cut -d' ' -f1)
+  fi
+  if [[ $got != "$VISQOL_MODEL_SHA256" ]]; then
+    echo "visqol: SVR model SHA-256 mismatch (got $got, want $VISQOL_MODEL_SHA256)" >&2
+    exit 1
+  fi
+fi
+
 (
   cd "$BUILD/visqol"
   # Trim TensorFlow-era flags that Bazel 5 rejects or that only make sense on
@@ -64,10 +122,11 @@ patch -d "$BUILD/visqol" -p1 <"$patchfile"
     printf '\nbuild --cxxopt=-include --cxxopt=cstdint\n' >>.bazelrc
   fi
   # The alternate expansion keeps `set -u` happy on bash 3.2 (macOS).
-  "$BAZEL" build -c opt ${BAZEL_ARGS[@]+"${BAZEL_ARGS[@]}"} //:visqol
+  "$BAZEL" ${BAZEL_STARTUP_ARGS[@]+"${BAZEL_STARTUP_ARGS[@]}"} \
+    build -c opt ${BAZEL_ARGS[@]+"${BAZEL_ARGS[@]}"} //:visqol
   mkdir -p "$PREFIX/bin" "$PREFIX/share"
   cp "bazel-bin/visqol$EXT" "$PREFIX/bin/visqol$EXT"
   chmod 755 "$PREFIX/bin/visqol$EXT"
-  cp model/libsvm_nu_svr_model.txt "$PREFIX/share/libsvm_nu_svr_model.txt"
+  cp "$model" "$PREFIX/share/libsvm_nu_svr_model.txt"
 )
 echo "visqol: installed $PREFIX/bin/visqol$EXT (bazel $USE_BAZEL_VERSION)"

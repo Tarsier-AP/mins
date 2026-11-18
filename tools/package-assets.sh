@@ -3,6 +3,10 @@
 #
 #   bash tools/package-assets.sh linux_amd64
 #
+# Every tool is required: a release bundle is either complete or not produced
+# (ADR 0008). ViSQOL is no exception — the default audio metric needs it, and
+# its SVR model ships with it.
+#
 # Each tool is gzip-compressed (gzip -9 -n) and a sha256sums.txt of the
 # *decompressed* files is written next to it; internal/tools verifies cached
 # copies against that manifest.
@@ -14,25 +18,21 @@ PREFIX=${PREFIX:-$root/tools/.build/prefix}
 dest="$root/internal/tools/assets/$target"
 
 case $target in
-  windows_*) ext=.exe; suffix="" ;;
-  *) ext=""; suffix="" ;;
+  windows_*) ext=.exe ;;
+  *) ext="" ;;
 esac
 
-tools=(ffmpeg ffprobe cwebp dwebp img2webp anim_dump avifenc avifdec cjxl djxl heif-convert heif-info)
-optional=(visqol)
+tools=(ffmpeg ffprobe visqol cwebp dwebp img2webp anim_dump avifenc avifdec cjxl djxl heif-convert heif-info)
+model_name=libsvm_nu_svr_model.txt
 
 rm -rf "$dest"
 mkdir -p "$dest"
 : >"$dest/sha256sums.txt"
 
-add() { # name [optional]
-  local name=$1 optional=${2:-0}
+add() { # name
+  local name=$1
   local src="$PREFIX/bin/$name$ext"
   if [[ ! -f $src ]]; then
-    if [[ $optional == 1 ]]; then
-      echo "package: $name not built; skipping (optional)" >&2
-      return
-    fi
     echo "package: missing required tool: $src" >&2
     exit 1
   fi
@@ -48,31 +48,21 @@ add() { # name [optional]
 }
 
 for t in "${tools[@]}"; do add "$t"; done
-for t in "${optional[@]}"; do add "$t" 1; done
 
-model="$PREFIX/share/libsvm_nu_svr_model.txt"
-if [[ -f $model ]]; then
-  out="$dest/libsvm_nu_svr_model.txt"
-  cp "$model" "$out"
-  hash=$(sha256sum "$out" 2>/dev/null | cut -d' ' -f1 || shasum -a 256 "$out" | cut -d' ' -f1)
-  gzip -9 -n -c "$out" >"$out.gz"
-  rm -f "$out"
-  printf '%s  %s\n' "$hash" "libsvm_nu_svr_model.txt" >>"$dest/sha256sums.txt"
-  echo "package: libsvm_nu_svr_model.txt"
-else
-  echo "package: ViSQOL model not built; skipping (optional)" >&2
-fi
-
-# A release ships ViSQOL and its SVR model together or not at all: a visqol
-# binary without the model cannot run, and a bundled model nobody uses is
-# dead weight. Both are optional (see above), so they are either both
-# skipped by the build or both packaged here.
-visqol_shipped=$([[ -f $dest/visqol$ext.gz ]] && echo yes || echo no)
-model_shipped=$([[ -f $dest/libsvm_nu_svr_model.txt.gz ]] && echo yes || echo no)
-if [[ $visqol_shipped != $model_shipped ]]; then
-  echo "package: visqol ($visqol_shipped) and its SVR model ($model_shipped) must ship together" >&2
+# The SVR model is part of ViSQOL: a binary without it cannot run, and a model
+# without the binary is dead weight. Requiring both here keeps that promise.
+model="$PREFIX/share/$model_name"
+if [[ ! -f $model ]]; then
+  echo "package: missing required ViSQOL model: $model" >&2
   exit 1
 fi
+out="$dest/$model_name"
+cp "$model" "$out"
+hash=$(sha256sum "$out" 2>/dev/null | cut -d' ' -f1 || shasum -a 256 "$out" | cut -d' ' -f1)
+gzip -9 -n -c "$out" >"$out.gz"
+rm -f "$out"
+printf '%s  %s\n' "$hash" "$model_name" >>"$dest/sha256sums.txt"
+echo "package: $model_name"
 
 # The .keep file keeps the empty asset directory in git.
 : >"$dest/.keep"

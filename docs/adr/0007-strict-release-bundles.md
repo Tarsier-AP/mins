@@ -1,6 +1,6 @@
 # ADR 0007 — Strict release bundles
 
-**Status:** accepted
+**Status:** accepted (partially superseded by ADR 0008)
 
 ## Context
 
@@ -20,11 +20,13 @@ Windows build.
 Release bundles are strict:
 
 - Packaging fails the build when any required tool is missing for the
-  target. Only ViSQOL is optional.
+  target. Only ViSQOL is optional. *(Superseded by ADR 0008: ViSQOL and its
+  model are required too.)*
 - ViSQOL ships together with its SVR model or not at all.
 - ViSQOL built outside the toolchain build is audited and dropped from the
   prefix when it is not portable, exactly like build.sh audits the required
-  tools.
+  tools. *(Superseded by ADR 0008: ViSQOL is built and audited inside
+  `build.sh`, and a non-portable binary fails the build.)*
 - A unit test pins the three bundle-list copies together, so adding,
   removing, or renaming a tool must update all of them at once.
 

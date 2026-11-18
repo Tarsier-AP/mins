@@ -59,7 +59,9 @@ make parity MINS_SH=/path/to/mins.sh          # v1.17.0 parity diff
   embedded assets.
 - `make bundle` packages the host toolchain into
   `internal/tools/assets/<os>_<arch>/`, then builds. `make release` requires
-  assets for all five targets.
+  assets for all five targets. ViSQOL and its SVR model are required in every
+  bundle (ADR 0008); `WITH_VISQOL=0` skips it for local development only and
+  `tools/package-assets.sh` then refuses to package.
 - `tools/versions.env` is the version source of truth. Its hash becomes
   `BuildHash`, which names the runtime extraction cache
   (`<user cache>/mins/2.0.0-<hash>/`); bumping a version invalidates caches.

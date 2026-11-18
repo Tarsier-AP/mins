@@ -47,6 +47,9 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
+      # ViSQOL is a required bundle component on every target (ADR 0008).
+      # Windows installs Bazelisk into the MSYS2 prefix instead (below), so
+      # build-visqol.sh can find it regardless of how MSYS2 rewrites PATH.
       - name: Install Bazelisk (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -91,38 +94,66 @@ jobs:
             patch
             autoconf automake libtool git curl unzip zip
 
+      - name: Install Bazelisk (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          curl -fsSL -o /usr/local/bin/bazel.exe \
+            https://github.com/bazelbuild/bazelisk/releases/download/v1.30.0/bazelisk-windows-amd64.exe
+          chmod +x /usr/local/bin/bazel.exe
+
       - name: Cache sources
         uses: actions/cache@v4
         with:
           path: tools/.build/src
           key: ${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('tools/versions.env', 'tools/build.sh', 'tools/build-visqol.sh', 'tools/fetch-sources.sh', 'tools/patches/**') }}
 
+      # Repository cache only: it removes the network/download variable from
+      # ViSQOL's 2022-era WORKSPACE without trusting a previous build's action
+      # graph (which would make a red build harder to diagnose).
+      - name: Cache Bazel repository
+        uses: actions/cache@v4
+        with:
+          path: .bazel-cache
+          key: ${{ runner.os }}-${{ matrix.arch }}-bazel-${{ hashFiles('tools/versions.env', 'tools/build-visqol.sh', 'tools/patches/**') }}
+
+      # One strict path: build.sh builds and audits every required tool,
+      # ViSQOL included. No warning fallback and no continue-on-error: a
+      # missing or non-portable tool fails the job (ADR 0008).
       - name: Build toolchain (Unix)
         if: runner.os != 'Windows'
+        timeout-minutes: 240
         run: |
           bash tools/fetch-sources.sh
-          WITH_VISQOL=0 bash tools/build.sh
-          bash tools/build-visqol.sh || echo "::warning::ViSQOL build failed; VISQOL_BIN will be required at runtime"
-          # ViSQOL is built outside build.sh, so audit it here and drop it
-          # from the prefix when it is not portable.
-          bash tools/audit-optional.sh
+          set +e
+          BAZEL_REPOSITORY_CACHE="$PWD/.bazel-cache" bash tools/build.sh 2>&1 | tee toolchain.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            tail -n 30 toolchain.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::${line}"
+            done
+            exit "$status"
+          fi
 
       - name: Build toolchain (Windows)
         if: runner.os == 'Windows'
+        timeout-minutes: 240
         shell: msys2 {0}
         run: |
           bash tools/fetch-sources.sh
-          WITH_VISQOL=0 bash tools/build.sh
-
-      - name: Attempt ViSQOL (Windows, best effort)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: msys2 {0}
-        run: |
-          bash tools/build-visqol.sh
-          # ViSQOL is built outside build.sh, so audit it here and drop it
-          # from the prefix when it is not portable.
-          bash tools/audit-optional.sh
+          # Bazel is a native binary: hand it a native path, not /d/a/...
+          cache=$(cygpath -m "$PWD/.bazel-cache")
+          set +e
+          BAZEL_REPOSITORY_CACHE="$cache" bash tools/build.sh 2>&1 | tee toolchain.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            tail -n 30 toolchain.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::${line}"
+            done
+            exit "$status"
+          fi
 
       - name: Package embedded assets
         run: bash tools/package-assets.sh ${{ matrix.os }}_${{ matrix.arch }}
@@ -265,12 +296,32 @@ jobs:
           }
           test -s "$work/clip.webp"
 
-          if [ -x "tools/.build/prefix/bin/visqol$ext" ]; then
-            "$ff" -hide_banner -loglevel error -y \
-              -f lavfi -i "sine=frequency=440:duration=2" -c:a flac "$work/tone.flac"
-            run_embedded "$work/tone.flac"
-            test -s "$work/tone.opus"
-          fi
+          # ViSQOL is required, so the default audio path must work with the
+          # embedded tools and model. --target-audio 1 keeps a synthetic tone
+          # from failing the gate for quality reasons; the report assertions
+          # are what prove the model was found and actually scored.
+          "$ff" -hide_banner -loglevel error -y \
+            -f lavfi -i "sine=frequency=440:duration=2" -c:a flac "$work/tone.flac"
+          run_embedded --target-audio 1 "$work/tone.flac"
+          test -s "$work/tone.opus"
+          rep="$work/tone.audio.json"
+          test -s "$rep"
+          grep -q '"mean_mos"' "$rep" || {
+            echo "::error::audio smoke report has no mean_mos"
+            cat "$rep"
+            exit 1
+          }
+          grep -q '"visqol_model"' "$rep" || {
+            echo "::error::audio smoke report has no visqol_model (bundled model not resolved)"
+            cat "$rep"
+            exit 1
+          }
+          mos=$(sed -nE 's/.*"mean_mos" *: *"([0-9.]+)".*/\1/p' "$rep")
+          awk -v m="$mos" 'BEGIN { exit !(m >= 1 && m <= 5) }' || {
+            echo "::error::audio smoke mean_mos '$mos' is outside the MOS-LQO 1..5 range"
+            cat "$rep"
+            exit 1
+          }
 
       - name: Package release archive
         if: runner.os != 'Windows'

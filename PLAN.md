@@ -84,10 +84,10 @@ Pinned in `tools/versions.env`:
 
 CI (`.github/workflows/release.yml`) builds the tools on native runners,
 then cross-compiles the Go binary with the per-target asset directory.
-`tools/build.sh` refuses to package any required executable that still links a
-non-system shared library. ViSQOL is optional at packaging time: if its Bazel
-build produces a non-portable binary, it is dropped and mins asks for
-`VISQOL_BIN` at runtime.
+`tools/build.sh` refuses to package any executable that still links a
+non-system shared library. ViSQOL and its SVR model are required on every
+target (ADR 0008): a missing or non-portable Bazel build fails the release
+instead of producing a bundle whose default audio metric cannot run.
 
 ## Checklist
 
@@ -111,11 +111,11 @@ build produces a non-portable binary, it is dropped and mins asks for
 - [x] static-link / portability audit in the toolchain build
 - [x] local linux/amd64 bundled-toolchain build and embedded smoke test
 - [x] strict release bundles: packaging fails on missing required tools,
-      ViSQOL ships only with its model, non-portable ViSQOL is dropped, and
-      the bundle lists are pinned together by a unit test
+      ViSQOL and its model are required on every target, non-portable tools
+      fail the build, and the bundle lists are pinned together by a unit test
 - [ ] first green CI run for all five targets (native toolchain builds need
       runner validation; ViSQOL/Bazel and macOS/Windows link closure are the
-      remaining unknowns)
+      remaining unknowns; ADR 0008)
 
 ## Verification
 

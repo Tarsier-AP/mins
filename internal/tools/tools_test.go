@@ -121,11 +121,13 @@ func TestPathUsesToolsDirAndEnvOverride(t *testing.T) {
 }
 
 // TestPackageListsMatchToolNames pins the three copies of the bundle list
-// together: ToolNames below, the required/optional lists in
-// tools/package-assets.sh, and the audit list in tools/build.sh. A
-// self-contained release must carry every tool the code can invoke; drift
-// between these lists would ship a binary with silent holes or package a
-// tool nothing calls.
+// together: ToolNames below, the required list in tools/package-assets.sh,
+// and the audit list in tools/build.sh. A self-contained release must carry
+// every tool the code can invoke; drift between these lists would ship a
+// binary with silent holes or package a tool nothing calls.
+//
+// Every tool is required (ADR 0008). ViSQOL in particular is the default
+// audio metric, so a bundle without it is not a valid release artifact.
 func TestPackageListsMatchToolNames(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -152,15 +154,17 @@ func TestPackageListsMatchToolNames(t *testing.T) {
 	pkg := read("tools/package-assets.sh")
 	build := read("tools/build.sh")
 	required := group(pkg, `(?m)^tools=\(([^)]*)\)`, "required")
-	optional := group(pkg, `(?m)^optional=\(([^)]*)\)`, "optional")
 	audited := group(build, `(?s)for t in ([^;]+); do`, "audit")
 
 	known := map[string]bool{}
 	for _, n := range ToolNames {
 		known[n] = true
 	}
-	for _, list := range []struct{ name string; tools []string }{
-		{"required", required}, {"optional", optional}, {"audit", audited},
+	for _, list := range []struct {
+		name  string
+		tools []string
+	}{
+		{"required", required}, {"audit", audited},
 	} {
 		for _, n := range list.tools {
 			if !known[n] {
@@ -168,24 +172,14 @@ func TestPackageListsMatchToolNames(t *testing.T) {
 			}
 		}
 	}
-	optionalSet := map[string]bool{}
-	for _, n := range optional {
-		optionalSet[n] = true
-	}
-	var fromToolNames []string
-	for _, n := range ToolNames {
-		if !optionalSet[n] {
-			fromToolNames = append(fromToolNames, n)
-		}
-	}
-	if !sameSet(required, fromToolNames) {
-		t.Errorf("required list %v != ToolNames minus optional %v", required, fromToolNames)
+	if !sameSet(required, ToolNames) {
+		t.Errorf("required list %v != ToolNames %v", required, ToolNames)
 	}
 	if !sameSet(audited, required) {
 		t.Errorf("build.sh audit list %v != required list %v", audited, required)
 	}
-	if len(optionalSet) == 0 {
-		t.Error("no optional tools declared; visqol must stay droppable")
+	if !strings.Contains(pkg, ModelName) {
+		t.Errorf("package-assets.sh does not package the required ViSQOL model %q", ModelName)
 	}
 }
 

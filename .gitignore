@@ -4,6 +4,7 @@
 /internal/tools/assets/*/*
 !/internal/tools/assets/*/.keep
 /tools/.build/
+/.bazel-cache/
 /testdata/generated/
 /tools/dist/
 *.part

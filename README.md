@@ -108,23 +108,22 @@ automatically.
 The build is reproducible from `tools/versions.env`. On Linux the packaged
 executables are fully static; macOS uses only the system libc/libc++ and
 frameworks. Packaging is strict: a release build fails if any required tool
-is missing for its target, and ViSQOL ships only together with its SVR
-model. What the code can invoke, what gets packaged, and what the toolchain
-build audits are pinned together by a test in `internal/tools`. ViSQOL is
-built without TensorFlow/TFLite (see
-`tools/patches/`), so its optional deep-lattice speech model is unavailable;
-audio quality measurement (the mode mins uses) and the default speech mapper
-are unaffected.
+is missing for its target, and ViSQOL and its SVR model are required on every
+target (ADR 0008). What the code can invoke, what gets packaged, and what the
+toolchain build audits are pinned together by a test in `internal/tools`.
+ViSQOL is built without TensorFlow/TFLite (see `tools/patches/`), so its
+optional deep-lattice speech model is unavailable; audio quality measurement
+(the mode mins uses) and the default speech mapper are unaffected.
 
 ## Limits
 
 - Camera RAW input is not supported (no libraw).
 - HEIC/HEIF support is still-image only; animated HEIF is not decoded.
-- Windows ViSQOL is built on a best-effort basis because Bazel's Windows
-  toolchain is MSVC-oriented, while the rest of the bundle is MinGW. If it is
-  not available, set `VISQOL_BIN` (and `VISQOL_MODEL`), or use
-  `--audio-metric asisdr`; mins fails with a clear error instead of silently
-  changing the metric.
+- Windows ViSQOL is built with Bazel/MSVC and the static CRT, unlike the
+  MinGW-built rest of the bundle. A release is blocked if it cannot be built
+  portably. Development builds without it can set `VISQOL_BIN` (and
+  `VISQOL_MODEL`), or use `--audio-metric asisdr`; mins fails with a clear
+  error instead of silently changing the metric.
 - ViSQOL's deep-lattice speech mapper is not compiled in (it required
   TensorFlow/TFLite). `--use_speech_mode` still works through the polynomial
   mapper; the flag is accepted but falls back with a warning.

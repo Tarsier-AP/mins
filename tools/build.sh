@@ -8,8 +8,9 @@
 #
 #   PREFIX=/opt/mins JOBS=8 bash tools/build.sh
 #
-# Windows ViSQOL is best-effort: set WITH_VISQOL=0 to skip it. The app then
-# requires VISQOL_BIN at runtime, exactly as documented.
+# ViSQOL is required for release bundles (ADR 0008). WITH_VISQOL=0 skips it
+# for local development only; tools/package-assets.sh refuses to package a
+# prefix that lacks visqol or its SVR model.
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -403,18 +404,13 @@ fi
 log "verifying packaged executables"
 audit_failed=0
 for t in ffmpeg ffprobe cwebp dwebp img2webp anim_dump \
-  avifenc avifdec cjxl djxl heif-convert heif-info; do
+  avifenc avifdec cjxl djxl heif-convert heif-info visqol; do
+  if [[ $t == visqol && $WITH_VISQOL == 0 ]]; then
+    echo "audit: skipping visqol (WITH_VISQOL=0 is local-dev only; packaging will refuse)" >&2
+    continue
+  fi
   audit_binary "$PREFIX/bin/$t$BIN_EXT" || audit_failed=1
 done
-if [[ -x $PREFIX/bin/visqol$BIN_EXT ]]; then
-  if ! audit_binary "$PREFIX/bin/visqol$BIN_EXT"; then
-    # ViSQOL is optional: a Bazel toolchain may inject a run-time DLL on
-    # Windows. Dropping the binary makes mins ask for VISQOL_BIN instead of
-    # shipping something that cannot start on a clean machine.
-    echo "audit: dropping optional visqol from the bundle" >&2
-    rm -f "$PREFIX/bin/visqol$BIN_EXT"
-  fi
-fi
 # libvmaf embeds its built-in models at build time by running xxd over the
 # model JSON files — but meson looks for xxd with `required: false` and
 # silently skips the models when it is missing (as on MSYS2). The library
