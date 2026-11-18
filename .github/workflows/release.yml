@@ -273,10 +273,15 @@ jobs:
           fi
 
       - name: Package release archive
-        # The Windows archive is a .zip built with zip(1), which only exists
-        # inside the MSYS2 environment (the default Git-Bash shell does not
-        # see its /usr/bin).
-        shell: ${{ matrix.os == 'windows' && 'msys2 {0}' || 'bash' }}
+        if: runner.os != 'Windows'
+        run: bash tools/package-release.sh tools/dist "$VERSION"
+
+      # The Windows archive is a .zip built with zip(1), which only exists
+      # inside the MSYS2 environment (the default Git-Bash shell does not
+      # see its /usr/bin).
+      - name: Package release archive (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: bash tools/package-release.sh tools/dist "$VERSION"
 
       - uses: actions/upload-artifact@v4
