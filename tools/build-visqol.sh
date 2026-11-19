@@ -8,9 +8,12 @@
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-# Strip CR so a stale CRLF checkout cannot poison every version value
-# (the repository enforces LF via .gitattributes).
-source <(sed 's/\r$//' "$root/tools/versions.env")
+# versions.env is a simple KEY=VALUE file with ${VAR} references. Eval a
+# CR-stripped copy instead of sourcing it: macOS ships bash 3.2, where
+# `source <(...)` dies with "sed: stdout: Broken pipe" and leaves every
+# variable unset. .gitattributes already enforces LF, but a stale
+# checkout must not poison the version values either.
+eval "$(sed 's/\r$//' "$root/tools/versions.env")"
 
 SRC=${SRC:-$root/tools/.build/src}
 PREFIX=${PREFIX:-$root/tools/.build/prefix}
