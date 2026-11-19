@@ -16,10 +16,12 @@ jobs:
   build:
     name: ${{ matrix.os }}/${{ matrix.arch }}
     strategy:
-      # Report every target's own failure in one run. With fail-fast a single
-      # red job cancels the others, which hides what still needs fixing (the
-      # reason the macOS ViSQOL failure stayed unknown for several runs).
-      fail-fast: false
+      # Stop every remaining target as soon as one matrix job fails. A
+      # toolchain build costs hours per runner, so a known-bad run should not
+      # keep the other four burning. When debugging several independent
+      # targets, temporarily set this to false so each one reports its own
+      # error instead of being cancelled.
+      fail-fast: true
       matrix:
         include:
           - os: linux
