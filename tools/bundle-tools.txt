@@ -1,0 +1,19 @@
+# Executables embedded in every release bundle, one per line.
+# tools/package-assets.sh packages exactly this list and
+# tools/check-licenses.sh verifies that every entry is covered by
+# tools/licenses/inventory.tsv. Keep the ViSQOL SVR model out of this list:
+# package-assets.sh requires it separately because it is data, not an
+# executable.
+ffmpeg
+ffprobe
+visqol
+cwebp
+dwebp
+img2webp
+anim_dump
+avifenc
+avifdec
+cjxl
+djxl
+heif-convert
+heif-info

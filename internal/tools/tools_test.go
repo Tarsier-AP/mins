@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -120,11 +119,11 @@ func TestPathUsesToolsDirAndEnvOverride(t *testing.T) {
 	}
 }
 
-// TestPackageListsMatchToolNames pins the three copies of the bundle list
-// together: ToolNames below, the required list in tools/package-assets.sh,
-// and the audit list in tools/build.sh. A self-contained release must carry
-// every tool the code can invoke; drift between these lists would ship a
-// binary with silent holes or package a tool nothing calls.
+// TestPackageListsMatchToolNames pins the bundle list together: ToolNames
+// below and tools/bundle-tools.txt, which packaging, the toolchain audit, and
+// the license checker share. A self-contained release must carry every tool
+// the code can invoke; drift would ship a binary with silent holes or package
+// a tool nothing calls.
 //
 // Every tool is required (ADR 0008). ViSQOL in particular is the default
 // audio metric, so a bundle without it is not a valid release artifact.
@@ -143,42 +142,36 @@ func TestPackageListsMatchToolNames(t *testing.T) {
 		}
 		return string(b)
 	}
-	group := func(src, pattern, name string) []string {
-		t.Helper()
-		m := regexp.MustCompile(pattern).FindStringSubmatch(src)
-		if m == nil {
-			t.Fatalf("cannot find the %s list", name)
+	bundle := read("tools/bundle-tools.txt")
+	var tools []string
+	for _, line := range strings.Split(bundle, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
 		}
-		return strings.Fields(strings.ReplaceAll(m[1], "\\", " "))
+		tools = append(tools, line)
 	}
-	pkg := read("tools/package-assets.sh")
-	build := read("tools/build.sh")
-	required := group(pkg, `(?m)^tools=\(([^)]*)\)`, "required")
-	audited := group(build, `(?s)for t in ([^;]+); do`, "audit")
 
 	known := map[string]bool{}
 	for _, n := range ToolNames {
 		known[n] = true
 	}
-	for _, list := range []struct {
-		name  string
-		tools []string
-	}{
-		{"required", required}, {"audit", audited},
-	} {
-		for _, n := range list.tools {
-			if !known[n] {
-				t.Errorf("%s list names %q, which is not in ToolNames", list.name, n)
-			}
+	for _, n := range tools {
+		if !known[n] {
+			t.Errorf("bundle-tools.txt names %q, which is not in ToolNames", n)
 		}
 	}
-	if !sameSet(required, ToolNames) {
-		t.Errorf("required list %v != ToolNames %v", required, ToolNames)
+	if !sameSet(tools, ToolNames) {
+		t.Errorf("bundle-tools.txt %v != ToolNames %v", tools, ToolNames)
 	}
-	if !sameSet(audited, required) {
-		t.Errorf("build.sh audit list %v != required list %v", audited, required)
+
+	// The manifest is only authoritative if both consumers read it.
+	for _, rel := range []string{"tools/package-assets.sh", "tools/build.sh"} {
+		if !strings.Contains(read(rel), "bundle-tools.txt") {
+			t.Errorf("%s does not read tools/bundle-tools.txt", rel)
+		}
 	}
-	if !strings.Contains(pkg, ModelName) {
+	if !strings.Contains(read("tools/package-assets.sh"), ModelName) {
 		t.Errorf("package-assets.sh does not package the required ViSQOL model %q", ModelName)
 	}
 }

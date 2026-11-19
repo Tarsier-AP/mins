@@ -10,7 +10,7 @@ TARGETS    := linux/amd64 linux/arm64 windows/amd64 darwin/amd64 darwin/arm64
 DIST       := tools/dist
 TOOLCHAIN_TARGET ?= $(shell $(GO) env GOOS)_$(shell $(GO) env GOARCH)
 
-.PHONY: all build test vet check fixtures integration parity release clean toolchain assets bundle
+.PHONY: all build test vet check fixtures integration parity release clean toolchain assets bundle licenses sources relink
 
 all: build
 
@@ -38,6 +38,20 @@ vet:
 	$(GO) vet ./...
 
 check: vet test
+	bash tools/check-licenses.sh
+
+# Regenerate THIRD_PARTY_NOTICES.md from tools/licenses/inventory.tsv.
+licenses:
+	bash tools/gen-notices.sh
+
+# Build the shared source archive from tools/.build/src. Release CI runs this
+# on one runner; local use requires tools/fetch-sources.sh first.
+sources:
+	bash tools/collect-sources.sh sources $(VERSION)
+
+# Build the target-specific LGPL relink archive from a completed toolchain.
+relink:
+	bash tools/collect-sources.sh relink $(TOOLCHAIN_TARGET) $(VERSION)
 
 fixtures:
 	bash tools/fixtures.sh

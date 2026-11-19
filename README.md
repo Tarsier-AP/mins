@@ -139,11 +139,35 @@ mins_2.0.0_<os>_<arch>.tar.gz   (or .zip on Windows)
   mins[.exe]
   LICENSE
   THIRD_PARTY_NOTICES.md
+  LICENSES/
+mins_2.0.0_sources.tar.xz
+mins_2.0.0_relink_<os>_<arch>.tar.xz
 sha256sums.txt
 ```
 
+`tools/check-licenses.sh` runs offline before each toolchain build, audits
+the built toolchain with `--built` afterwards, and fails the release instead
+of publishing a drifted notice or a non-portable binary. A separate job builds
+the target-independent sources archive; publishing waits for it.
+
 Pinned tool versions live in `tools/versions.env`. macOS binaries are
-unsigned; this is a personal-use project, so there is no notarization.
+unsigned; there is no notarization. See `docs/release-checklist.md` for the
+pre- and post-release steps.
+
+## Licenses
+
+`mins` is MIT-licensed (see `LICENSE`). The bundled tools keep their own
+licenses. FFmpeg is LGPL-2.1-or-later and is built without `--enable-gpl`,
+`--enable-nonfree`, or `--enable-version3`, so no GPL-only code ships.
+libheif and libde265 are LGPL-3.0-or-later and statically linked into the HEIF
+tools; the codec libraries (libvmaf, SVT-AV1, libaom, libwebp, libjxl,
+libavif, libopus, ViSQOL) are permissive.
+
+`THIRD_PARTY_NOTICES.md` is generated from `tools/licenses/inventory.tsv` by
+`make licenses`; `LICENSES/` carries the full texts. Every release publishes
+complete corresponding source and per-target relink materials for the
+statically linked LGPL libraries (see `docs/adr/0009-bundle-licensing.md`).
+The inventory is a factual record, not legal advice.
 
 ## Layout
 
@@ -161,5 +185,6 @@ internal/audioproc/  standalone audio path
 internal/report/     JSON schemas
 internal/tui/        built-in dashboard
 docs/adr/            architecture decisions
-tools/               toolchain build/package scripts
+LICENSES/            third-party license texts
+tools/               toolchain build/package scripts and the license inventory
 ```

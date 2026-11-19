@@ -36,41 +36,8 @@ export CMAKE_PREFIX_PATH="$PREFIX:${CMAKE_PREFIX_PATH:-}"
 
 log() { printf '\n==> %s\n' "$*"; }
 
-# audit_binary refuses to package an executable that still depends on a
-# non-system shared library. Release archives contain only executables, so a
-# stray Homebrew/MSYS2 dylib or DLL would make the bundle fail on a clean
-# machine.
-audit_binary() { # path
-  local f=$1 bad=''
-  [[ -f $f ]] || { echo "audit: missing $f" >&2; return 1; }
-  case "$OS" in
-    Linux)
-      local lddout
-      lddout=$(ldd "$f" 2>&1 || true)
-      if grep -qE 'not a dynamic executable|statically linked' <<<"$lddout"; then
-        return 0
-      fi
-      # Keep only the loader and the minimal runtime that every distro
-      # ships. libpng/libjpeg/libz/Homebrew libraries must be static.
-      bad=$( { grep -E '=>' <<<"$lddout" \
-          | sed -E 's/.*=>[[:space:]]*([^[:space:]]+).*/\1/';
-        grep -E '^[[:space:]]*/' <<<"$lddout" | awk '{print $1}'; } \
-        | grep -vE '^/(lib|lib64|usr/lib|usr/lib64)/([^/]+/)?(ld-linux[^/]*|libc\.so\.[0-9]+|libm\.so\.[0-9]+|libstdc\+\+\.so\.[0-9]+|libgcc_s\.so\.[0-9]+|libpthread\.so\.[0-9]+|libdl\.so\.[0-9]+|librt\.so\.[0-9]+|libatomic\.so\.[0-9]+)$' || true)
-      ;;
-    Darwin)
-      bad=$(otool -L "$f" | tail -n +2 | awk '{print $1}' \
-        | grep -vE '^(/usr/lib/|/System/Library/)' || true)
-      ;;
-    MINGW*|MSYS*|CYGWIN*)
-      bad=$(objdump -p "$f" | awk '/DLL Name:/{print $3}' \
-        | grep -viE '^(KERNEL32|USER32|GDI32|ADVAPI32|SHELL32|SHLWAPI|ole32|OLEAUT32|WS2_32|WSOCK32|IPHLPAPI|bcrypt|crypt32|secur32|COMCTL32|PSAPI|msvcrt|ucrtbase|ntdll|dbghelp|DWMAPI|MF|MFPlat|MFReadWrite|AVICAP32)\.dll$' || true)
-      ;;
-  esac
-  if [[ -n $bad ]]; then
-    printf 'audit: %s has non-system shared dependencies:\n%s\n' "$f" "$bad" >&2
-    return 1
-  fi
-}
+# shellcheck source=audit.sh
+source "$root/tools/audit.sh"
 
 unpack_top() { # tarball dest
   rm -rf "$2"; mkdir -p "$2"
@@ -381,7 +348,6 @@ unpack_top "$SRC/ffmpeg-$FFMPEG_VERSION.tar.xz" "$BUILD/ffmpeg"
     --disable-autodetect \
     --enable-zlib \
     --pkg-config-flags=--static \
-    --enable-gpl \
     --enable-libvmaf \
     --enable-libsvtav1 \
     --enable-libaom \
@@ -392,6 +358,10 @@ unpack_top "$SRC/ffmpeg-$FFMPEG_VERSION.tar.xz" "$BUILD/ffmpeg"
   make -j "$JOBS"
   make install
 )
+# Release archives tell recipients that FFmpeg is LGPL-only. Fail the build
+# here, not just in CI, if a stale configure line ever reintroduces the GPL.
+log "verifying FFmpeg license configuration"
+audit_ffmpeg_license "$PREFIX/bin/ffmpeg$BIN_EXT"
 
 # ---------------------------------------------------------------- ViSQOL
 if [[ $WITH_VISQOL == 1 ]]; then
@@ -403,14 +373,15 @@ fi
 
 log "verifying packaged executables"
 audit_failed=0
-for t in ffmpeg ffprobe cwebp dwebp img2webp anim_dump \
-  avifenc avifdec cjxl djxl heif-convert heif-info visqol; do
+while IFS= read -r t; do
+  t=${t%$'\r'}
+  case "$t" in ''|'#'*) continue ;; esac
   if [[ $t == visqol && $WITH_VISQOL == 0 ]]; then
     echo "audit: skipping visqol (WITH_VISQOL=0 is local-dev only; packaging will refuse)" >&2
     continue
   fi
   audit_binary "$PREFIX/bin/$t$BIN_EXT" || audit_failed=1
-done
+done <"$root/tools/bundle-tools.txt"
 # libvmaf embeds its built-in models at build time by running xxd over the
 # model JSON files — but meson looks for xxd with `required: false` and
 # silently skips the models when it is missing (as on MSYS2). The library

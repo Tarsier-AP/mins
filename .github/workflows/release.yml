@@ -50,6 +50,13 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
+      # Fast, offline gate. It runs before the four-hour toolchain build so a
+      # stale THIRD_PARTY_NOTICES.md, a missing license text, or a GPL flag in
+      # tools/build.sh fails in seconds rather than after a full build
+      # (ADR 0009).
+      - name: Check license materials
+        run: bash tools/check-licenses.sh
+
       # ViSQOL is a required bundle component on every target (ADR 0008).
       # Windows installs Bazelisk into the MSYS2 prefix instead (below), so
       # build-visqol.sh can find it regardless of how MSYS2 rewrites PATH.
@@ -72,7 +79,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install cmake ninja meson nasm pkg-config autoconf automake libtool \
-            libpng jpeg-turbo lcms2 brotli
+            libpng jpeg-turbo lcms2 brotli xz
 
       - name: Set up MSYS2 (Windows)
         if: runner.os == 'Windows'
@@ -95,7 +102,7 @@ jobs:
             mingw-w64-x86_64-zlib
             vim
             patch
-            autoconf automake libtool git curl unzip zip
+            autoconf automake libtool git curl unzip zip xz
 
       # /usr/local/bin does not exist in a stock MSYS2 tree, so `curl -o`
       # there fails with "(23) client returned ERROR on write". Download next
@@ -167,6 +174,19 @@ jobs:
 
       - name: Package embedded assets
         run: bash tools/package-assets.sh ${{ matrix.os }}_${{ matrix.arch }}
+
+      # Runs the built executables. This is the only place that can prove the
+      # binary FFmpeg is the LGPL-only build the notices describe, that every
+      # shipped executable is statically linked or system-only, and that the
+      # relink inputs exist.
+      - name: Audit built toolchain licenses (Unix)
+        if: runner.os != 'Windows'
+        run: bash tools/check-licenses.sh --built
+
+      - name: Audit built toolchain licenses (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: bash tools/check-licenses.sh --built
 
       - name: Build Go binary
         run: |
@@ -345,6 +365,30 @@ jobs:
         shell: msys2 {0}
         run: bash tools/package-release.sh tools/dist "$VERSION"
 
+      # Target-specific LGPL relink materials (ADR 0009). It must run after the
+      # toolchain build because it packages libheif/libde265 archives and the
+      # heif-dec/heif-info objects from tools/.build.
+      - name: Collect relink archive (Unix)
+        if: runner.os != 'Windows'
+        run: bash tools/collect-sources.sh relink "${{ matrix.os }}_${{ matrix.arch }}" "$VERSION"
+
+      - name: Collect relink archive (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: bash tools/collect-sources.sh relink "${{ matrix.os }}_${{ matrix.arch }}" "$VERSION"
+
+      # package-release.sh wrote its checksums before the relink archive
+      # existed. Recompute so the uploaded manifest covers every artifact;
+      # publish recomputes once more after merging the sources archive.
+      - name: Refresh checksums
+        run: |
+          cd tools/dist
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum mins_* >sha256sums.txt
+          else
+            shasum -a 256 mins_* >sha256sums.txt
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: mins-${{ matrix.os }}-${{ matrix.arch }}
@@ -353,9 +397,40 @@ jobs:
             tools/dist/sha256sums.txt
           if-no-files-found: error
 
+  # One release-wide source archive covers every target. It is built once
+  # because the pinned sources are target-independent (ADR 0009).
+  sources:
+    name: sources archive
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check license materials
+        run: bash tools/check-licenses.sh
+
+      - name: Install archive tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xz-utils
+
+      - name: Fetch pinned sources
+        run: bash tools/fetch-sources.sh
+
+      - name: Collect sources archive
+        run: bash tools/collect-sources.sh sources "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mins-sources
+          path: tools/dist/mins_*_sources.tar.xz
+          if-no-files-found: error
+
   publish:
     name: publish release
-    needs: build
+    needs: [build, sources]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     steps:

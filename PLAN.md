@@ -19,6 +19,9 @@ executable per OS, with the media toolchain embedded.
   extracted to a per-user cache on first run.
 - Five targets: linux/amd64, linux/arm64, windows/amd64, darwin/amd64,
   darwin/arm64.
+- License-compliant release bundles: MIT for `mins`, LGPL-only FFmpeg,
+  `LICENSES/` in every archive, a shared sources archive, per-target relink
+  materials, and automated checks that fail the release (ADR 0009).
 
 **Out of scope**
 
@@ -26,7 +29,6 @@ executable per OS, with the media toolchain embedded.
 - Animated HEIF sequences (still HEIC only).
 - ImageMagick (removed entirely).
 - The old `minsview` JSON event protocol.
-- Public binary distribution/licensing compliance (personal use for now).
 
 ## Architecture
 
@@ -113,6 +115,9 @@ instead of producing a bundle whose default audio metric cannot run.
 - [x] strict release bundles: packaging fails on missing required tools,
       ViSQOL and its model are required on every target, non-portable tools
       fail the build, and the bundle lists are pinned together by a unit test
+- [x] licensing compliance: LGPL-only FFmpeg, `LICENSES/` in every archive,
+      generated notices from a single inventory, sources and relink archives,
+      and a blocking license gate in CI (ADR 0009)
 - [ ] first green CI run for all five targets (native toolchain builds need
       runner validation; ViSQOL/Bazel and macOS/Windows link closure are the
       remaining unknowns; ADR 0008)
@@ -128,5 +133,11 @@ instead of producing a bundle whose default audio metric cannot run.
    on `PATH` (`PATH=$PWD/tools/.build/prefix/bin:$PATH`) or the Go binary
    compares its embedded FFmpeg/libvmaf against the system one, and the
    small VMAF deltas flip gate decisions at the boundary.
-6. `make release` — five archives + `sha256sums.txt` (needs embedded assets).
+6. `make licenses` — regenerate `THIRD_PARTY_NOTICES.md` from the inventory
+   (`make check` and CI fail if it is stale).
+7. `make sources` / `make relink TOOLCHAIN_TARGET=<os>_<arch>` — build the
+   license compliance archives (need fetched sources / a built toolchain).
+8. `make release` — five binaries with `LICENSES/` and `sha256sums.txt`
+   (needs embedded assets). The sources and relink archives are built per
+   target by `tools/collect-sources.sh` in CI.
 

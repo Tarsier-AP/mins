@@ -22,7 +22,13 @@ case $target in
   *) ext="" ;;
 esac
 
-tools=(ffmpeg ffprobe visqol cwebp dwebp img2webp anim_dump avifenc avifdec cjxl djxl heif-convert heif-info)
+tools=()
+while IFS= read -r t; do
+  t=${t%$'\r'}
+  case "$t" in ''|'#'*) continue ;; esac
+  tools+=("$t")
+done <"$root/tools/bundle-tools.txt"
+[[ ${#tools[@]} -gt 0 ]] || { echo "package: tools/bundle-tools.txt is empty" >&2; exit 1; }
 model_name=libsvm_nu_svr_model.txt
 
 rm -rf "$dest"

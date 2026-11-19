@@ -25,13 +25,16 @@ FFmpeg/codec toolchain embedded. Module `mins`, Go 1.24+, standard library only
 ## Commands
 
 ```sh
-make check                 # go vet ./... && go test ./... (default verification)
+make check                 # go vet ./... && go test ./... && license checks
 make test                  # offline unit tests, no media tools needed
 go test ./internal/image -run TestSearch -v   # single package / test
 make build                 # dev binary ./mins, NO embedded assets
 make fixtures              # synthetic media in testdata/generated/
 make integration           # builds, then go test -tags=integration ...
 make parity MINS_SH=/path/to/mins.sh          # v1.17.0 parity diff
+make licenses              # regenerate THIRD_PARTY_NOTICES.md
+make sources               # shared source archive (needs fetched sources)
+make relink TOOLCHAIN_TARGET=linux_amd64      # LGPL relink archive
 ```
 
 - Integration tests are behind `//go:build integration`; plain `go test ./...`
@@ -91,9 +94,35 @@ libvmaf JSON log parsing in `internal/vmaf`; results/logs/TUI in
 - Exit codes: 0 success, 1 one or more gate/processing failures, 2 usage/fatal,
   130 interrupted.
 
+## Licensing
+
+`mins` is MIT; the embedded tools keep their own licenses. Read ADR 0009
+before touching tool versions, bundle membership, or packaging.
+
+- `tools/licenses/inventory.tsv` is the single source of truth (versions, SPDX
+  ids, link sets, license files). `tools/gen-notices.sh` renders
+  `THIRD_PARTY_NOTICES.md`; `--check` fails when it is stale.
+- Every shipped executable must be in `tools/bundle-tools.txt` and covered by
+  the inventory. `tools/check-licenses.sh` enforces both, checks that every
+  pinned runtime version is referenced, and validates the release workflow
+  wiring. `make check` runs it; `--built` also audits the built toolchain.
+- `LICENSES/` holds the full texts; release archives must include it.
+- FFmpeg is built without `--enable-gpl`, `--enable-nonfree`, and
+  `--enable-version3`; `tools/build.sh` asserts the resulting banner. Do not
+  add GPL-only components without changing the notices, the ADR, and the
+  distribution model.
+- libheif/libde265 are LGPL and statically linked. `tools/collect-sources.sh`
+  publishes the corresponding source and per-target relink materials; keep
+  the relink scripts and `RELINK.md` working when build flags change.
+- Generated notices are factual, not legal advice.
+
 ## Release
 
-Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds the
-native toolchain per target, embeds assets, smoke-tests the self-contained
-binary, and publishes archives with `sha256sums.txt`. There is no separate
-local release path beyond `make release` with assets present.
+Pushing a `v*` tag triggers `.github/workflows/release.yml`, which runs the
+offline license gate, builds the native toolchain per target, embeds assets,
+audits the built binaries, smoke-tests the self-contained binary, and
+publishes archives with `LICENSES/`. A separate `sources` job builds
+`mins_<version>_sources.tar.xz`; each target job also publishes
+`mins_<version>_relink_<os>_<arch>.tar.xz`. `publish` waits for both. There is
+no separate local release path beyond `make release` with assets present.
+Follow `docs/release-checklist.md`.
