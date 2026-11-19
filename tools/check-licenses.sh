@@ -11,8 +11,9 @@
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-# shellcheck source=versions.env
-source "$root/tools/versions.env"
+# Strip CR so a stale CRLF checkout cannot poison every version value
+# (the repository enforces LF via .gitattributes).
+source <(sed 's/\r$//' "$root/tools/versions.env")
 
 built=0
 case "${1:-}" in
@@ -73,7 +74,7 @@ fi
 awk -F'\t' '!/^#/ && NF >= 5 { print $5 }' "$inventory" \
   | tr ';' '\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
   | sed '/^$/d' | sort -u >"$tmp/inventory_tools"
-grep -v '^#' "$bundle_tools" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+grep -v '^#' "$bundle_tools" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
   | sed '/^$/d' | sort -u >"$tmp/bundle_tools"
 echo mins >>"$tmp/bundle_tools"
 sort -u -o "$tmp/bundle_tools" "$tmp/bundle_tools"

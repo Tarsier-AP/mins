@@ -11,8 +11,9 @@
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-# shellcheck source=versions.env
-source "$root/tools/versions.env"
+# Strip CR so a stale CRLF checkout cannot poison every version value
+# (the repository enforces LF via .gitattributes).
+source <(sed 's/\r$//' "$root/tools/versions.env")
 
 mode=write
 case "${1:-}" in
@@ -87,11 +88,15 @@ copyrights=(); license_files=(); modifications=(); notes=()
 lineno=0
 while IFS=$'\t' read -r c_id c_name c_version c_spdx c_binaries c_source c_copyright c_license_files c_modifications c_notes; do
   lineno=$((lineno + 1))
+  # A CRLF checkout must not turn the blank separator line into a bogus
+  # one-column record. LF is enforced by .gitattributes, but be tolerant.
+  c_id=${c_id%$'\r'}
   case "$c_id" in ''|'#'*) continue ;; esac
   if [[ -z ${c_notes+x} || -z $c_version || -z $c_spdx ]]; then
     echo "gen-notices: $inventory:$lineno: expected 10 tab-separated columns" >&2
     exit 1
   fi
+  c_notes=${c_notes%$'\r'}
   c_version=$(subst_version "$c_version")
   ids+=("$c_id")
   names+=("$c_name")
@@ -134,7 +139,7 @@ while [[ $i -lt ${#ids[@]} ]]; do
   done < <(spdx_ids "${spdxes[$i]}")
   i=$((i + 1))
 done
-appendix=$(printf '%s\n' "$appendix" | sort -u)
+appendix=$(printf '%s\n' "$appendix" | LC_ALL=C sort -u)
 
 # ---- render ---------------------------------------------------------------
 render() {
@@ -218,6 +223,7 @@ EOF
   # Preserve bundle-tools order, then mins last.
   local tool comp_list
   while IFS= read -r tool; do
+    tool=${tool%$'\r'}
     tool=$(trim "$tool")
     case "$tool" in ''|'#'*) continue ;; esac
     comp_list=''

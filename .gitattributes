@@ -1,0 +1,5 @@
+# The build, packaging, and license scripts are bash and Go. Force LF in the
+# working tree on every platform so `source tools/versions.env`, `read`
+# loops over tools/licenses/inventory.tsv, and the generated notices behave
+# identically on Windows, macOS, and Linux.
+* text=auto eol=lf

@@ -8,8 +8,9 @@
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-# shellcheck source=versions.env
-source "$root/tools/versions.env"
+# Strip CR so a stale CRLF checkout cannot poison every version value
+# (the repository enforces LF via .gitattributes).
+source <(sed 's/\r$//' "$root/tools/versions.env")
 
 SRC=${SRC:-$root/tools/.build/src}
 PREFIX=${PREFIX:-$root/tools/.build/prefix}
