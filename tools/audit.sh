@@ -65,8 +65,10 @@ audit_ffmpeg_license() { # path
     fi
   done
   # FFmpeg wraps the banner across lines, and the wrapping changes between
-  # releases, so flatten it before matching phrases.
-  lic=$("$f" -hide_banner -L 2>/dev/null | tr '\n' ' ' || true)
+  # releases, so flatten it before matching phrases. Windows writes the banner
+  # with CRLF; removing only the newline would leave a CR in the middle of the
+  # phrase and make the audit fail on an otherwise correct LGPL build.
+  lic=$("$f" -hide_banner -L 2>/dev/null | tr -d '\r' | tr '\n' ' ' || true)
   if ! grep -q 'GNU Lesser General Public License' <<<"$lic"; then
     echo "audit: $f does not report the GNU Lesser General Public License" >&2
     return 1
