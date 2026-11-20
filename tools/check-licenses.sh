@@ -40,6 +40,15 @@ errors=0
 fail() { echo "licenses: $*" >&2; errors=$((errors + 1)); }
 need_file() { [[ -s $1 ]] || fail "missing or empty: ${1#"$root"/}"; }
 need_tool() { [[ -f $1 ]] || fail "missing built tool: ${1#"$root"/}"; }
+# CMake names objects .o on Unix and .obj on Windows (including MSYS2's
+# native CMake), so resolve build objects by stem instead of suffix.
+need_object() { # dir stem
+  local dir=$1 stem=$2 ext
+  for ext in o obj; do
+    [[ -s $dir/$stem.$ext ]] && return 0
+  done
+  fail "missing or empty: ${dir#"$root"/}/$stem.o (or .obj)"
+}
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/mins-licenses.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
@@ -144,15 +153,15 @@ if [[ $built == 1 ]]; then
   need_file "$PREFIX/share/libsvm_nu_svr_model.txt"
 
   # Relink materials for the statically linked LGPL libraries. The archive
-  # builder uses these exact paths, so a missing object here means the release
-  # would silently ship an incomplete relink archive.
+  # builder resolves these by stem too, so a missing object here means the
+  # release would silently ship an incomplete relink archive.
   need_file "$PREFIX/lib/libheif.a"
   need_file "$PREFIX/lib/libde265.a"
   need_file "$BUILD/heif/build/heifio/libheifio.a"
-  need_file "$BUILD/heif/build/examples/CMakeFiles/heif-dec.dir/heif_dec.cc.o"
-  need_file "$BUILD/heif/build/examples/CMakeFiles/heif-dec.dir/common.cc.o"
-  need_file "$BUILD/heif/build/examples/CMakeFiles/heif-info.dir/heif_info.cc.o"
-  need_file "$BUILD/heif/build/examples/CMakeFiles/heif-info.dir/common.cc.o"
+  need_object "$BUILD/heif/build/examples/CMakeFiles/heif-dec.dir" heif_dec.cc
+  need_object "$BUILD/heif/build/examples/CMakeFiles/heif-dec.dir" common.cc
+  need_object "$BUILD/heif/build/examples/CMakeFiles/heif-info.dir" heif_info.cc
+  need_object "$BUILD/heif/build/examples/CMakeFiles/heif-info.dir" common.cc
 fi
 
 if [[ $errors -ne 0 ]]; then

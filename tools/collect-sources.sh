@@ -267,14 +267,25 @@ need "$PREFIX/lib/libz.a" "libz.a"
 need "$BUILD/heif/build/heifio/libheifio.a" "libheifio.a"
 
 mkdir -p "$stage/relink/objects/heif-dec" "$stage/relink/objects/heif-info"
-for f in heif_dec.cc.o common.cc.o; do
-  need "$BUILD/heif/build/examples/CMakeFiles/heif-dec.dir/$f" "heif-dec/$f"
-  mv "$stage/relink/$f" "$stage/relink/objects/heif-dec/$f"
-done
-for f in heif_info.cc.o common.cc.o; do
-  need "$BUILD/heif/build/examples/CMakeFiles/heif-info.dir/$f" "heif-info/$f"
-  mv "$stage/relink/$f" "$stage/relink/objects/heif-info/$f"
-done
+# CMake names objects .o on Unix and .obj on Windows, so copy them into the
+# archive under a stable .o name for the relink scripts.
+object_for() { # dir stem
+  local ext
+  for ext in o obj; do
+    [[ -f $1/$2.$ext ]] && { echo "$1/$2.$ext"; return 0; }
+  done
+  echo "relink: missing object: ${1#"$root"/}/$2.o (or .obj)" >&2
+  return 1
+}
+take_object() { # dir stem destdir name
+  local src
+  src=$(object_for "$1" "$2") || exit 1
+  cp "$src" "$3/$4.o"
+}
+take_object "$BUILD/heif/build/examples/CMakeFiles/heif-dec.dir" heif_dec.cc "$stage/relink/objects/heif-dec" heif_dec.cc
+take_object "$BUILD/heif/build/examples/CMakeFiles/heif-dec.dir" common.cc "$stage/relink/objects/heif-dec" common.cc
+take_object "$BUILD/heif/build/examples/CMakeFiles/heif-info.dir" heif_info.cc "$stage/relink/objects/heif-info" heif_info.cc
+take_object "$BUILD/heif/build/examples/CMakeFiles/heif-info.dir" common.cc "$stage/relink/objects/heif-info" common.cc
 
 # Reproduce the upstream link commands, but with overridable library paths.
 cat >"$stage/relink/relink-heif-dec.sh" <<'EOF'
@@ -288,14 +299,15 @@ LIBHEIF_A=${LIBHEIF_A:-$here/libheif.a}
 LIBDE265_A=${LIBDE265_A:-$here/libde265.a}
 static=()
 late=()
+out=$here/heif-dec
 case $(uname -s) in
   Darwin) ;;
-  MINGW*|MSYS*|CYGWIN*) static=(-static) late=(-lwinpthread) ;;
+  MINGW*|MSYS*|CYGWIN*) out=$here/heif-dec.exe; static=(-static); late=(-lwinpthread) ;;
   *) static=(-static) ;;
 esac
 exec "$CXX" -DLIBDE265_STATIC_BUILD -O3 -DNDEBUG "${static[@]}" \
   "$here/objects/heif-dec/heif_dec.cc.o" "$here/objects/heif-dec/common.cc.o" \
-  -o "$here/heif-dec" \
+  -o "$out" \
   "$LIBHEIF_A" "$here/libheifio.a" "$LIBHEIF_A" "$LIBDE265_A" \
   "$here/libaom.a" "$here/libjpeg.a" "$here/libpng16.a" "$here/libz.a" \
   "$here/libwebpmux.a" "$here/libwebp.a" "$here/libsharpyuv.a" -lm "${late[@]}"
@@ -312,14 +324,15 @@ LIBHEIF_A=${LIBHEIF_A:-$here/libheif.a}
 LIBDE265_A=${LIBDE265_A:-$here/libde265.a}
 static=()
 late=()
+out=$here/heif-info
 case $(uname -s) in
   Darwin) ;;
-  MINGW*|MSYS*|CYGWIN*) static=(-static) late=(-lwinpthread) ;;
+  MINGW*|MSYS*|CYGWIN*) out=$here/heif-info.exe; static=(-static); late=(-lwinpthread) ;;
   *) static=(-static) ;;
 esac
 exec "$CXX" -DLIBDE265_STATIC_BUILD -O3 -DNDEBUG "${static[@]}" \
   "$here/objects/heif-info/heif_info.cc.o" "$here/objects/heif-info/common.cc.o" \
-  -o "$here/heif-info" \
+  -o "$out" \
   "$LIBHEIF_A" "$LIBDE265_A" "$here/libaom.a" -lm "${late[@]}"
 EOF
 chmod +x "$stage/relink/relink-heif-dec.sh" "$stage/relink/relink-heif-info.sh"
@@ -392,8 +405,10 @@ LIBDE265_A=\$PWD/prefix/lib/libde265.a \\
 ./relink-heif-info.sh
 \`\`\`
 
-The scripts default to the archives in this directory. Set \`CXX\` if your
-compiler is not \`c++\`.
+The scripts default to the archives in this directory and write
+\`heif-dec\`/\`heif-info\` (with an \`.exe\` suffix on Windows). Set \`CXX\` if
+your compiler is not \`c++\`. The archived objects are normalized to \`.o\`
+regardless of the platform they were built on.
 
 ## Install the result
 
