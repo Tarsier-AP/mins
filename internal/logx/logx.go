@@ -17,6 +17,7 @@ import (
 type Logger struct {
 	mu    sync.Mutex
 	file  *os.File
+	sink  func(string)
 	Path  string
 	Dir   string
 	RunID string
@@ -68,12 +69,26 @@ func (l *Logger) Header(version string, argv []string, cwd string) {
 	l.Append("cwd : " + cwd)
 }
 
+// SetSink routes terminal-bound lines to fn while the TUI owns the screen.
+// The run log is still written. A nil sink restores normal output.
+func (l *Logger) SetSink(fn func(string)) {
+	l.mu.Lock()
+	l.sink = fn
+	l.mu.Unlock()
+}
+
 // Info prints "[mins] ..." to stdout and mirrors it to the log.
 func (l *Logger) Info(format string, args ...any) {
 	line := "[mins] " + fmt.Sprintf(format, args...)
 	l.mu.Lock()
-	fmt.Fprintln(l.Out, line)
+	sink := l.sink
+	if sink == nil {
+		fmt.Fprintln(l.Out, line)
+	}
 	l.mu.Unlock()
+	if sink != nil {
+		sink(line)
+	}
 	l.Append(line)
 }
 
@@ -86,8 +101,14 @@ func (l *Logger) Warn(format string, args ...any) {
 func (l *Logger) Error(format string, args ...any) {
 	line := "mins: error: " + fmt.Sprintf(format, args...)
 	l.mu.Lock()
-	fmt.Fprintln(l.Err, line)
+	sink := l.sink
+	if sink == nil {
+		fmt.Fprintln(l.Err, line)
+	}
 	l.mu.Unlock()
+	if sink != nil {
+		sink(line)
+	}
 	l.Append(line)
 }
 

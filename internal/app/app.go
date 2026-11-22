@@ -101,10 +101,9 @@ func Run(c *config.Config, log *logx.Logger) int {
 	}
 	parallel := !c.FBF && c.WorkersExplicit && c.Workers > 1 && eligible > 1
 
-	// The dashboard replaces minsview. It is only useful where no ffmpeg
-	// progress bar is already drawing on stderr.
+	// The dashboard replaces minsview on every TTY run.
 	dashMode := "batch"
-	hasImg, hasVid := false, false
+	hasImg, hasVid, hasAud := false, false, false
 	for _, j := range jobs {
 		if j.mode == "image" || j.mode == "animate" {
 			hasImg = true
@@ -112,19 +111,34 @@ func Run(c *config.Config, log *logx.Logger) int {
 		if j.mode == "video" {
 			hasVid = true
 		}
+		if j.mode == "audio" {
+			hasAud = true
+		}
 	}
-	if hasImg && !hasVid {
+	if hasImg && !hasVid && !hasAud {
 		dashMode = "image"
-	} else if hasVid && !hasImg {
+	} else if hasVid && !hasImg && !hasAud {
 		dashMode = "video"
+	} else if hasAud && !hasImg && !hasVid {
+		dashMode = "audio"
 	}
-	dashOn := !c.NoTUI && tui.IsTerminal(os.Stderr) && (parallel || c.FBF)
+	dashOn := !c.NoTUI && tui.IsTerminal(os.Stderr)
 	fileLabel := "batch"
 	if len(jobs) == 1 {
 		fileLabel = filepath.Base(jobs[0].input)
 	}
 	dash := tui.New(dashOn, dashMode, fileLabel, len(jobs), c.Workers)
 	e.TUI = dash
+	if dash.Enabled() {
+		if dash.FullScreen() {
+			log.SetSink(dash.Log)
+		}
+		e.R.Notice = dash.Log
+		e.R.Progress = len(jobs) == 1 && !c.FBF
+		if e.R.Progress {
+			e.R.OnProgress = dash.EncodeFraction
+		}
+	}
 	dash.Start()
 
 	var (
@@ -138,6 +152,9 @@ func Run(c *config.Config, log *logx.Logger) int {
 		var row result.Row
 		var failed bool
 		var err error
+		jobLabel := filepath.Base(j.input)
+		env.TUIJob = jobLabel
+		dash.StartFile(jobLabel, j.input, dashMode)
 		switch j.mode {
 		case "subtitle":
 			row = result.Row{Output: filepath.Base(j.input), Mode: "subs", Q: "-", VMAF: "-", Size: "-",
@@ -170,8 +187,11 @@ func Run(c *config.Config, log *logx.Logger) int {
 			failedN.Add(1)
 		}
 		n := int(done.Add(1))
-		dash.Progress(n, int(failedN.Load()))
-		dash.Done(filepath.Base(j.input), row.Status, "")
+		// FBF counts frames itself, and a single-file run is fraction-based.
+		if len(jobs) > 1 && !c.FBF {
+			dash.Progress(n, int(failedN.Load()))
+		}
+		dash.Done(jobLabel, row.Status, resultSize(j.input, row.Output))
 	}
 
 	if parallel {
@@ -210,6 +230,7 @@ func Run(c *config.Config, log *logx.Logger) int {
 	}
 
 	dash.Close()
+	log.SetSink(nil)
 
 	if fatal.Load() {
 		select {
@@ -225,6 +246,19 @@ func Run(c *config.Config, log *logx.Logger) int {
 		return 1
 	}
 	return 0
+}
+
+// resultSize returns the output file's size for the dashboard totals. Output
+// names are basenames in the input's directory.
+func resultSize(input, output string) int64 {
+	if output == "" || output == filepath.Base(input) {
+		return 0
+	}
+	st, err := os.Stat(filepath.Join(filepath.Dir(input), output))
+	if err != nil {
+		return 0
+	}
+	return st.Size()
 }
 
 func preflight(c *config.Config, e *core.Env) error {

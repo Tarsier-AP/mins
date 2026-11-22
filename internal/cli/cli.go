@@ -9,7 +9,7 @@ import (
 // Version is the program version; Parity names the shell version this
 // implementation matches.
 const (
-	Version = "2.0.0"
+	Version = "2.1.0"
 	Parity  = "mins.sh 1.17.0"
 )
 

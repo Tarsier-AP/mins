@@ -413,7 +413,7 @@ regardless of the platform they were built on.
 ## Install the result
 
 \`mins\` extracts its tools to
-\`<user cache dir>/mins/2.0.0-<buildhash>/\`; \`MINS_TOOLS_DIR\` overrides that
+\`<user cache dir>/mins/<version>-<buildhash>/\`; \`MINS_TOOLS_DIR\` overrides that
 path. Replace \`heif-dec\`/\`heif-info\` there (and refresh the extraction
 cache's checksums or use a fresh \`MINS_TOOLS_DIR\`), then run \`mins\` with
 \`--no-tui\` to test. \`heif-convert\` is a symlink to \`heif-dec\` in the

@@ -15,6 +15,7 @@ import (
 	"mins/internal/config"
 	"mins/internal/core"
 	"mins/internal/logx"
+	"mins/internal/tui"
 )
 
 func main() {
@@ -22,6 +23,9 @@ func main() {
 }
 
 func run(argv []string) int {
+	// A panic must never leave the alternate screen or a hidden cursor.
+	defer tui.RestoreAll()
+
 	o, err := cli.Parse(argv)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mins: error: "+err.Error())
@@ -55,10 +59,18 @@ func run(argv []string) int {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sig
+		tui.RestoreAll()
 		core.Cleanup()
 		_ = log.Close()
 		os.Exit(130)
 	}()
+	// q in the dashboard takes the same path as Ctrl-C/SIGTERM.
+	tui.SetQuit(func() {
+		select {
+		case sig <- os.Interrupt:
+		default:
+		}
+	})
 
 	if log.Enabled() {
 		cwd, _ := os.Getwd()

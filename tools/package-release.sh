@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Turn the per-target build directories into release archives.
 #
-#   bash tools/package-release.sh tools/dist 2.0.0
+#   bash tools/package-release.sh tools/dist 2.1.0
 #
 # Expects tools/dist/<os>-<arch>/{mins,mins.exe} and writes
 # tools/dist/mins_<version>_<os>_<arch>.{tar.gz,zip} plus

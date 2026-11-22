@@ -12,7 +12,7 @@ re-extracting the whole toolchain on every run is wasteful.
 Assets live under `internal/tools/assets/<os>_<arch>/`, gzip-compressed, and
 are selected at build time by a `//go:build` file. On first use they are
 extracted atomically (`.part` + rename) to
-`os.UserCacheDir()/mins/2.0.0-<buildhash>/`. Each platform directory carries a
+`os.UserCacheDir()/mins/<version>-<buildhash>/`. Each platform directory carries a
 `sha256sums.txt`; cached files are verified on every start and re-extracted
 when missing or corrupt. `MINS_TOOLS_DIR` overrides the cache location and
 per-tool `MINS_<NAME>` variables override individual paths.

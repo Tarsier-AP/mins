@@ -26,7 +26,7 @@ func fakeRequest(lo, hi, seed, threshold int) (searchRequest, *[]int) {
 		Lo: lo, Hi: hi, Seed: seed, Target: 95, Auto: true,
 		Eval:    fakeEval(threshold, &calls),
 		Log:     func(string, ...any) {},
-		Attempt: func(int, float64, string) {},
+		Attempt: func(int, float64, int64, string) {},
 	}, &calls
 }
 
@@ -216,7 +216,7 @@ func runAuto(t *testing.T, st *core.QState, baseLo, threshold int) (int, []int) 
 		Lo: baseLo, Hi: hi, Seed: seed, Target: 95, Auto: true,
 		Eval:    fakeEval(threshold, &calls),
 		Log:     func(string, ...any) {},
-		Attempt: func(int, float64, string) {},
+		Attempt: func(int, float64, int64, string) {},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -15,7 +15,7 @@ Build the Go binary and the toolchain on a native runner for each target
 `macos-15`). `macos-14` was dropped when GitHub stopped supporting the
 image (`The configuration 'macos-14-arm64-us-default' is not supported`).
 Pinned versions live in `tools/versions.env`. Each job packages
-`mins_2.0.0_<os>_<arch>.tar.gz` (`.zip` on Windows) with `LICENSE`,
+`mins_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows) with `LICENSE`,
 `THIRD_PARTY_NOTICES.md`, and a `sha256sums.txt`.
 
 ViSQOL on Windows is attempted but not required: `VISQOL_BIN` can override it,

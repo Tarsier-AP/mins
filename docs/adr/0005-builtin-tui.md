@@ -1,6 +1,6 @@
 # ADR 0005 — Built-in TUI replaces minsview
 
-**Status:** accepted
+**Status:** amended by ADR 0010 (full-screen dashboard)
 
 ## Context
 

@@ -266,7 +266,7 @@ func runRefine(st *fileState) (*refineResult, error) {
 		}
 		e.Log.Info("refine: WARNING %d/%d fragment(s) never reached target %s even at %s=%d: %s",
 			nbelow, len(leaves), r.st.e.C.TargetRaw, r.qlab, r.floor, list)
-		e.TUI.Message("refine: %d fragment(s) never reached target %s", nbelow, r.st.e.C.TargetRaw)
+		e.TUI.Message(r.st.e.TUIJob, "refine: %d fragment(s) never reached target %s", nbelow, r.st.e.C.TargetRaw)
 	}
 	if e.Log.Enabled() {
 		e.Log.Append(fmt.Sprintf("---- refine: %d fragment(s) ----", len(leaves)))

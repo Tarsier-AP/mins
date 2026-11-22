@@ -2,6 +2,7 @@ package video
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -57,6 +58,7 @@ func errRow(name, mode, msg string) result.Row {
 // ProcessFile is the usual whole-clip AV1 path.
 func ProcessFile(e *core.Env, input string) (result.Row, bool, error) {
 	c := e.C
+	e.TUI.Phase(e.TUIJob, "probe", 0.02)
 	if _, err := os.Stat(input); err != nil {
 		return errRow(filepath.Base(input), "av1", "ERROR: not found"), true, nil
 	}
@@ -136,6 +138,8 @@ func ProcessFile(e *core.Env, input string) (result.Row, bool, error) {
 	qlab := c.QLab
 	lo, hi := c.CRFMin, c.CRFMax
 	best := -1
+	attempts := 0
+	e.TUI.Phase(e.TUIJob, "search", 0.05)
 	for lo <= hi {
 		mid := (lo + hi) / 2
 		cand := filepath.Join(work, fmt.Sprintf("search_%d.%s", mid, c.VidFmt))
@@ -157,7 +161,9 @@ func ProcessFile(e *core.Env, input string) (result.Row, bool, error) {
 			hi = mid - 1
 		}
 		e.Log.Info("search: %s=%d vmaf=%s size=%s %s", qlab, mid, fmtMean(mean), util.HumanSize(size), verdict)
-		e.TUI.Attempt("search", mid, mean, c.TargetVMAF, verdict)
+		e.TUI.Attempt(e.TUIJob, "search", mid, mean, size, verdict)
+		attempts++
+		e.TUI.Phase(e.TUIJob, "search", math.Min(0.05+0.05*float64(attempts), 0.5))
 		_ = os.Remove(cand)
 	}
 	if best < 0 {
@@ -169,6 +175,7 @@ func ProcessFile(e *core.Env, input string) (result.Row, bool, error) {
 	inSize := fileSize(input)
 	finalCRF := best
 	tries := 0
+	e.TUI.PhaseRange("encode", 0.55, 0.92)
 	for {
 		if err := st.encode(finalCRF, "quality", out+".part"); err != nil {
 			return result.Row{}, false, err
@@ -185,13 +192,13 @@ func ProcessFile(e *core.Env, input string) (result.Row, bool, error) {
 			st.passed = true
 			st.mean, st.size, st.finalCRF = mean, size, finalCRF
 			e.Log.Info("final : %s=%d vmaf=%s size=%s %s", qlab, finalCRF, fmtMean(mean), util.HumanSize(size), verdict)
-			e.TUI.Attempt("final", finalCRF, mean, c.TargetVMAF, verdict)
+			e.TUI.Attempt(e.TUIJob, "final", finalCRF, mean, size, verdict)
 			break
 		}
 		st.passed = false
 		st.mean, st.size, st.finalCRF = mean, size, finalCRF
 		e.Log.Info("final : %s=%d vmaf=%s size=%s %s", qlab, finalCRF, fmtMean(mean), util.HumanSize(size), verdict)
-		e.TUI.Attempt("final", finalCRF, mean, c.TargetVMAF, verdict)
+		e.TUI.Attempt(e.TUIJob, "final", finalCRF, mean, size, verdict)
 		if finalCRF <= c.QPHardMin {
 			break
 		}
@@ -207,9 +214,11 @@ func ProcessFile(e *core.Env, input string) (result.Row, bool, error) {
 	if err := os.Rename(out+".part", out); err != nil {
 		return result.Row{}, false, err
 	}
+	e.TUI.Phase(e.TUIJob, "finalize", 0.94)
 
 	var refineBlock *report.Refine
 	if c.Refine {
+		e.TUI.PhaseRange("refine", 0.94, 0.99)
 		rf, err := runRefine(st)
 		if err != nil {
 			return result.Row{}, false, err
@@ -232,7 +241,7 @@ func ProcessFile(e *core.Env, input string) (result.Row, bool, error) {
 	if !st.passed {
 		status = "FAIL (gate)"
 		failed = true
-		e.TUI.Message("did not reach target VMAF %s (best %s=%d, vmaf=%s)",
+		e.TUI.Message(e.TUIJob, "did not reach target VMAF %s (best %s=%d, vmaf=%s)",
 			c.TargetRaw, qlab, st.finalCRF, fmtMean(st.mean))
 	}
 	mode := st.modeCol

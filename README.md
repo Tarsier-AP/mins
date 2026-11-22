@@ -100,7 +100,7 @@ Release binaries embed compressed copies of:
 | ViSQOL | audio MOS-LQO gate |
 
 On first run they are extracted to
-`<user cache dir>/mins/2.0.0-<buildhash>/`, verified against an embedded
+`<user cache dir>/mins/2.1.0-<buildhash>/`, verified against an embedded
 SHA-256 manifest, and reused afterwards. Set `MINS_TOOLS_DIR` to choose a
 different location. A corrupt or half-written cache entry is re-extracted
 automatically.
@@ -135,13 +135,13 @@ optional deep-lattice speech model is unavailable; audio quality measurement
 `darwin/arm64`, then packages:
 
 ```
-mins_2.0.0_<os>_<arch>.tar.gz   (or .zip on Windows)
+mins_2.1.0_<os>_<arch>.tar.gz   (or .zip on Windows)
   mins[.exe]
   LICENSE
   THIRD_PARTY_NOTICES.md
   LICENSES/
-mins_2.0.0_sources.tar.xz
-mins_2.0.0_relink_<os>_<arch>.tar.xz
+mins_2.1.0_sources.tar.xz
+mins_2.1.0_relink_<os>_<arch>.tar.xz
 sha256sums.txt
 ```
 

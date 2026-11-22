@@ -300,6 +300,8 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 		hi, seed = e.QState.Window(baseLo)
 	}
 	encodeTool := ""
+	attempts := 0
+	e.TUI.Phase(e.TUIJob, "search", 0.05)
 	eval := func(q int) (float64, int64, error) {
 		cand := filepath.Join(work, fmt.Sprintf("search_%d.%s", q, c.ImgFmt))
 		tool, err := encode(q, cand)
@@ -319,8 +321,14 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 		Auto: c.QAuto,
 		Eval: eval,
 		Log:  e.Log.Info,
-		Attempt: func(q int, mean float64, verdict string) {
-			e.TUI.Attempt("search", q, mean, c.TargetVMAF, verdict)
+		Attempt: func(q int, mean float64, size int64, verdict string) {
+			e.TUI.Attempt(e.TUIJob, "search", q, mean, size, verdict)
+			attempts++
+			f := 0.05 + 0.05*float64(attempts)
+			if f > 0.5 {
+				f = 0.5
+			}
+			e.TUI.Phase(e.TUIJob, "search", f)
 		},
 	})
 	if err != nil {
@@ -344,6 +352,7 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 
 	inSize := fileSize(input)
 	final := filepath.Join(work, "final."+c.ImgFmt)
+	e.TUI.Phase(e.TUIJob, "encode", 0.65)
 	tool, err := encode(best, final)
 	if err != nil {
 		return encodeFail(e, input, filepath.Join(work, "magick_err.log"), tool, p.Tag), true, nil
@@ -366,7 +375,8 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 		verdict = "PASS"
 	}
 	e.Log.Info("final : q=%d vmaf=%s size=%s %s", best, util.Float(mean), util.HumanSize(size), verdict)
-	e.TUI.Attempt("final", best, mean, c.TargetVMAF, verdict)
+	e.TUI.Attempt(e.TUIJob, "final", best, mean, size, verdict)
+	e.TUI.Phase(e.TUIJob, "finalize", 0.95)
 
 	if err := os.Rename(final, out); err != nil {
 		return result.Row{}, false, err
@@ -391,7 +401,7 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 	if !passed {
 		status = "FAIL (gate)"
 		failed = true
-		e.TUI.Message("did not reach target VMAF %s (best q=%d, vmaf=%s)", c.TargetRaw, best, util.Float(mean))
+		e.TUI.Message(e.TUIJob, "did not reach target VMAF %s (best q=%d, vmaf=%s)", c.TargetRaw, best, util.Float(mean))
 	}
 	return result.Row{
 		Output: filepath.Base(out), Mode: c.ImgFmt, Q: strconv.Itoa(best),

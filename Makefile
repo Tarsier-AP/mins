@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-VERSION    := 2.0.0
+VERSION    := 2.1.0
 GO         ?= go
 BIN        := mins
 VERSIONS   := tools/versions.env

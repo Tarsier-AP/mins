@@ -161,6 +161,8 @@ func ProcessFBF(e *core.Env, input string) (result.Row, bool, error) {
 		pixFmt: c.PixFmt, target: c.TargetVMAF, srcW: p.W, srcH: p.H, fps: p.FPS,
 		threads: threads, refN: est, qlab: c.QLab, tag: tagOf(input)}
 
+	dash.SetTotal(est)
+
 	stop := make(chan struct{})
 	progDone := make(chan struct{})
 	go fbfProgress(e, resDir, est, dash, stop, progDone)
@@ -427,9 +429,13 @@ func fbfOneFrame(ctx *fbfCtx, i int) {
 	errlog := filepath.Join(fw, "err.log")
 	reportLine := func(format string, args ...any) {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Fprintf(os.Stderr, "  [mins] frame %d/%d: %s\n", i, ctx.refN, msg)
-		e.Log.Append(fmt.Sprintf("[mins] frame %d/%d: %s", i, ctx.refN, msg))
-		e.TUI.Message("frame %d/%d: %s", i, ctx.refN, msg)
+		line := fmt.Sprintf("[mins] frame %d/%d: %s", i, ctx.refN, msg)
+		if e.TUI.Enabled() {
+			e.TUI.Log(line)
+		} else {
+			fmt.Fprintf(os.Stderr, "  %s\n", line)
+		}
+		e.Log.Append(line)
 	}
 	copyLog := func() {
 		if !e.Log.Enabled() {

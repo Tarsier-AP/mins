@@ -195,6 +195,8 @@ func ProcessAnimate(e *core.Env, input string) (result.Row, bool, error) {
 		hi, seed = e.QState.Window(baseLo)
 	}
 	encodeTool := ""
+	attempts := 0
+	e.TUI.Phase(e.TUIJob, "search", 0.05)
 	eval := func(q int) (float64, int64, error) {
 		cand := filepath.Join(work, fmt.Sprintf("search_%d.%s", q, c.ImgFmt))
 		tool, err := encode(q, cand)
@@ -214,8 +216,14 @@ func ProcessAnimate(e *core.Env, input string) (result.Row, bool, error) {
 		Auto: c.QAuto,
 		Eval: eval,
 		Log:  e.Log.Info,
-		Attempt: func(q int, mean float64, verdict string) {
-			e.TUI.Attempt("search", q, mean, c.TargetVMAF, verdict)
+		Attempt: func(q int, mean float64, size int64, verdict string) {
+			e.TUI.Attempt(e.TUIJob, "search", q, mean, size, verdict)
+			attempts++
+			f := 0.05 + 0.05*float64(attempts)
+			if f > 0.5 {
+				f = 0.5
+			}
+			e.TUI.Phase(e.TUIJob, "search", f)
 		},
 	})
 	if err != nil {
@@ -239,6 +247,7 @@ func ProcessAnimate(e *core.Env, input string) (result.Row, bool, error) {
 
 	inSize := fileSize(input)
 	final := filepath.Join(work, "final."+c.ImgFmt)
+	e.TUI.Phase(e.TUIJob, "encode", 0.65)
 	tool, err := encode(best, final)
 	if err != nil {
 		return encodeFail(e, input, filepath.Join(work, "magick_err.log"), tool, p.Tag), true, nil
@@ -248,7 +257,13 @@ func ProcessAnimate(e *core.Env, input string) (result.Row, bool, error) {
 		return result.Row{}, true, err
 	}
 	size := fileSize(final)
+	verdict := "FAIL"
+	if util.AtLeast(mean, c.TargetVMAF) {
+		verdict = "PASS"
+	}
 	e.Log.Info("final : q=%d vmaf=%s size=%s", best, util.Float(mean), util.HumanSize(size))
+	e.TUI.Attempt(e.TUIJob, "final", best, mean, size, verdict)
+	e.TUI.Phase(e.TUIJob, "finalize", 0.95)
 	passed := util.AtLeast(mean, c.TargetVMAF)
 	if c.QAuto && e.QState != nil {
 		if passed {

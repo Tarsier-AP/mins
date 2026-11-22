@@ -74,7 +74,7 @@ func (r *Resolver) cacheDirLocked() string {
 	if err != nil || base == "" {
 		base = os.TempDir()
 	}
-	r.cacheDir = filepath.Join(base, "mins", "2.0.0-"+BuildHash)
+	r.cacheDir = filepath.Join(base, "mins", "2.1.0-"+BuildHash)
 	return r.cacheDir
 }
 

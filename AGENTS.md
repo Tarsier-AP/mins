@@ -67,7 +67,7 @@ make relink TOOLCHAIN_TARGET=linux_amd64      # LGPL relink archive
   `tools/package-assets.sh` then refuses to package.
 - `tools/versions.env` is the version source of truth. Its hash becomes
   `BuildHash`, which names the runtime extraction cache
-  (`<user cache>/mins/2.0.0-<hash>/`); bumping a version invalidates caches.
+  (`<user cache>/mins/2.1.0-<hash>/`); bumping a version invalidates caches.
 - Only five targets compile: linux/amd64, linux/arm64, windows/amd64,
   darwin/amd64, darwin/arm64. `internal/tools/platform_<os>_<arch>.go` selects
   the embedded FS via build tags; adding a target requires a new platform file,

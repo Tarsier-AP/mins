@@ -28,6 +28,9 @@ type Env struct {
 	Img   *native.Backend
 	Table *result.Table
 	TUI   *tui.Dashboard
+	// TUIJob is the display key of the file this Env is processing, so
+	// concurrent workers can address their own dashboard row.
+	TUIJob string
 
 	VisqolBin   string
 	VisqolModel string
@@ -136,7 +139,12 @@ func (e *Env) Clone(nproc int) *Env {
 	}
 	r := ffmpeg.New(e.R.FFmpeg, e.R.FFprobe, e.Log)
 	r.Progress = false
-	r.Quiet = true
+	if e.TUI != nil && e.TUI.Enabled() {
+		// Worker labels go to the dashboard's log pane instead of stderr.
+		r.Notice = e.TUI.Log
+	} else {
+		r.Quiet = true
+	}
 	ne := &Env{
 		C:           &c,
 		Log:         e.Log,
@@ -144,6 +152,7 @@ func (e *Env) Clone(nproc int) *Env {
 		Tools:       e.Tools,
 		Table:       e.Table,
 		TUI:         e.TUI,
+		TUIJob:      e.TUIJob,
 		VisqolBin:   e.VisqolBin,
 		VisqolModel: e.VisqolModel,
 		Version:     e.Version,

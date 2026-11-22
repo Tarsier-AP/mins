@@ -29,7 +29,7 @@ type searchRequest struct {
 	Auto    bool
 	Eval    searchEval
 	Log     func(format string, args ...any)
-	Attempt func(q int, mean float64, verdict string)
+	Attempt func(q int, mean float64, size int64, verdict string)
 }
 
 type searchResult struct {
@@ -142,7 +142,7 @@ func probe(req searchRequest, q int) (bool, error) {
 	}
 	logf(req, "search: q=%d vmaf=%s size=%s %s", q, util.Float(mean), util.HumanSize(size), verdict)
 	if req.Attempt != nil {
-		req.Attempt(q, mean, verdict)
+		req.Attempt(q, mean, size, verdict)
 	}
 	return pass, nil
 }

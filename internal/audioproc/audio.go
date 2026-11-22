@@ -169,6 +169,8 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 		lo, hi := c.BRMin, c.BRMax
 		bestN := 0
 		fb, fm, lb, lm := 0, 0.0, 0, 0.0
+		attempts := 0
+		e.TUI.Phase(e.TUIJob, "search", 0.05)
 		for lo <= hi {
 			mid := (lo + hi) / 2
 			cand := filepath.Join(work, fmt.Sprintf("search_%d.%s", mid, ext))
@@ -186,7 +188,13 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 			}
 			e.Log.Info("search: br=%dk %s=%s%s size=%s %s", mid, c.AudioMetric,
 				audio.Score(m), c.AudioUnit, util.HumanSize(size), verdict)
-			e.TUI.Attempt("search", mid, m, c.TargetAudio, verdict)
+			e.TUI.Attempt(e.TUIJob, "search", mid, m, size, verdict)
+			attempts++
+			f := 0.05 + 0.05*float64(attempts)
+			if f > 0.5 {
+				f = 0.5
+			}
+			e.TUI.Phase(e.TUIJob, "search", f)
 			if fb == 0 {
 				fb, fm = mid, m
 			}
@@ -206,6 +214,7 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 				c.BRMin, c.BRMax, c.AudioMetric, c.AudioTargetRaw, c.AudioUnitLong, bestN)
 		}
 		final := filepath.Join(work, "final."+ext)
+		e.TUI.Phase(e.TUIJob, "encode", 0.65)
 		if err := encode(bestN, final); err != nil {
 			return failed()
 		}
@@ -222,7 +231,8 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 			verdict = "PASS"
 		}
 		e.Log.Info("final : br=%dk %s=%s%s %s", bestN, c.AudioMetric, mean, c.AudioUnit, verdict)
-		e.TUI.Attempt("final", bestN, m, c.TargetAudio, verdict)
+		e.TUI.Attempt(e.TUIJob, "final", bestN, m, fileSize(final), verdict)
+		e.TUI.Phase(e.TUIJob, "finalize", 0.95)
 	}
 
 	final := filepath.Join(work, "final."+ext)
@@ -257,7 +267,7 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 	if !passed {
 		status = "FAIL (gate)"
 		failedGate = true
-		e.TUI.Message("did not reach %s target %s%s (best br=%sk, %s=%s%s)",
+		e.TUI.Message(e.TUIJob, "did not reach %s target %s%s (best br=%sk, %s=%s%s)",
 			c.AudioMetric, c.AudioTargetRaw, c.AudioUnitLong, best, c.AudioMetric, mean, c.AudioUnit)
 	}
 	return result.Row{

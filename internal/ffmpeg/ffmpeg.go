@@ -26,6 +26,11 @@ type Runner struct {
 	// Quiet suppresses the "[mins] label" line (workers report through the
 	// dashboard instead).
 	Quiet bool
+	// Notice receives the "[mins] label" line instead of stderr when set.
+	Notice func(string)
+	// OnProgress receives 0..1 encode progress instead of a stderr bar when
+	// set. The dashboard uses it for single-file phase progress.
+	OnProgress func(float64)
 
 	mu sync.Mutex
 }
@@ -49,7 +54,11 @@ func (r *Runner) Version() string {
 // drives the progress bar. stderr is captured to logPath.
 func (r *Runner) Run(label string, total float64, logPath string, args ...string) error {
 	if !r.Quiet {
-		fmt.Fprintf(os.Stderr, "[mins] %s\n", label)
+		if r.Notice != nil {
+			r.Notice("[mins] " + label)
+		} else {
+			fmt.Fprintf(os.Stderr, "[mins] %s\n", label)
+		}
 	}
 	logFile, err := os.Create(logPath)
 	if err != nil {
@@ -89,8 +98,12 @@ func (r *Runner) Run(label string, total float64, logPath string, args ...string
 				curUS, _ = strconv.ParseInt(v, 10, 64)
 			case "speed":
 				if curUS > 0 {
-					drawBar(curUS, int64(total*1e6), strings.TrimSuffix(v, "x"))
-					drew = true
+					if r.OnProgress != nil && total > 0 {
+						r.OnProgress(float64(curUS) / (total * 1e6))
+					} else {
+						drawBar(curUS, int64(total*1e6), strings.TrimSuffix(v, "x"))
+						drew = true
+					}
 				}
 			}
 		}
