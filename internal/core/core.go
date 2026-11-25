@@ -201,6 +201,37 @@ func Cleanup() {
 	}
 }
 
+var (
+	outMu    sync.Mutex
+	outOwner = map[string]string{}
+)
+
+// ClaimOutput reserves a finished-file path when --out-dir is in play. Without
+// it, outputs stay beside their inputs and today's overwrite behaviour stands,
+// so the default run is unchanged.
+func (e *Env) ClaimOutput(path, input string) error {
+	if e.C.OutDir == "" {
+		return nil
+	}
+	return claimOutput(path, input)
+}
+
+// claimOutput makes two inputs that would write the same file fail instead of
+// silently overwriting each other.
+func claimOutput(path, input string) error {
+	key, err := filepath.Abs(path)
+	if err != nil {
+		key = path
+	}
+	outMu.Lock()
+	defer outMu.Unlock()
+	if prev, ok := outOwner[key]; ok {
+		return fmt.Errorf("output collision: %s and %s both write %s", prev, input, path)
+	}
+	outOwner[key] = input
+	return nil
+}
+
 // AbsDir returns the absolute directory of path.
 func AbsDir(path string) (string, error) {
 	return filepath.Abs(filepath.Dir(path))

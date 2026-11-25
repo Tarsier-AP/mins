@@ -79,6 +79,19 @@ func TestQAuto(t *testing.T) {
 	}
 }
 
+func TestEventsFlag(t *testing.T) {
+	o, err := Parse([]string{"--events", "/tmp/run.ndjson", "a.mp4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.Events != "/tmp/run.ndjson" || !o.EventsSet {
+		t.Errorf("events = %q set=%v", o.Events, o.EventsSet)
+	}
+	if _, err := Parse([]string{"--events"}); err == nil {
+		t.Fatal("expected an error for a missing value")
+	}
+}
+
 func TestHelpAndVersionMarkers(t *testing.T) {
 	o, _ := Parse([]string{"--help"})
 	if o.Log != "\x00help" {

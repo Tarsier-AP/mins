@@ -22,10 +22,20 @@ FFmpeg/codec toolchain embedded. Module `mins`, Go 1.24+, standard library only
   `anim_dump`), not FFmpeg — FFmpeg's VP8 RGB differs and would move the gate.
   Alpha is flattened over `gray50`; VMAF compares 8-bit `yuv420p`.
 
+## GUI
+
+`gui/` holds `mins-gui`, a Rust/GPUI desktop frontend. It is a thin client: it
+spawns the Go binary and reads `--events`; it never makes encoding decisions.
+`--describe` is the single source of truth for the option form, so a new flag
+needs an entry there and a line of copy in `gui/src/surface.rs`. Keep `mins`
+itself dependency-free; Rust stays confined to `gui/`.
+
 ## Commands
 
 ```sh
 make check                 # go vet ./... && go test ./... && license checks
+make gui-check             # build the Go binary, then cargo test in gui/
+make gui-run               # run the desktop app against the dev binary
 make test                  # offline unit tests, no media tools needed
 go test ./internal/image -run TestSearch -v   # single package / test
 make build                 # dev binary ./mins, NO embedded assets

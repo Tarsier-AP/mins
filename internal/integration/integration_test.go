@@ -176,6 +176,170 @@ func TestGoImage(t *testing.T) {
 	}
 }
 
+func TestEvents(t *testing.T) {
+	bin := minsBin(t)
+	fix := fixtures(t)
+	dir := t.TempDir()
+	copyFixture(t, fix, dir, "in.png")
+	r := run(t, bin, dir, "--no-tui", "--img-encoder", "libwebp", "--events", "run.ndjson", "in.png")
+	if r.code != 0 {
+		t.Fatalf("exit %d:\n%s", r.code, r.output)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, "run.ndjson"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kinds []string
+	logs := 0
+	seen := map[string]map[string]any{}
+	for _, line := range strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n") {
+		var ev map[string]any
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("bad NDJSON line %q: %v", line, err)
+		}
+		if ev["v"] != float64(1) || ev["t"] == nil || ev["ts"] == nil {
+			t.Errorf("event missing envelope: %v", ev)
+		}
+		kind := ev["t"].(string)
+		kinds = append(kinds, kind)
+		if kind == "log" {
+			logs++
+			if !strings.HasPrefix(ev["line"].(string), "[mins] ") {
+				t.Errorf("log event is not a [mins] line: %v", ev["line"])
+			}
+			continue
+		}
+		if _, dup := seen[kind]; dup && kind != "progress" {
+			t.Errorf("duplicate %s event", kind)
+		}
+		seen[kind] = ev
+	}
+	// Preflight chatter may log before run_start; the run markers must bracket
+	// the files and the stream must end with run_end.
+	first, last := -1, -1
+	for i, k := range kinds {
+		if k == "run_start" {
+			first = i
+		}
+		if k == "file_start" && first < 0 {
+			t.Errorf("file_start before run_start: %v", kinds)
+		}
+		if k == "run_end" {
+			last = i
+		}
+	}
+	if first < 0 || last != len(kinds)-1 {
+		t.Fatalf("event order = %v", kinds)
+	}
+	if seen["run_start"]["total"] != float64(1) {
+		t.Errorf("run_start = %v", seen["run_start"])
+	}
+	if seen["file_start"]["input"] != "in.png" {
+		t.Errorf("file_start = %v", seen["file_start"])
+	}
+	if seen["file_done"]["status"] != "PASS" || seen["file_done"]["index"] != float64(0) {
+		t.Errorf("file_done = %v", seen["file_done"])
+	}
+	if seen["run_end"]["failures"] != float64(0) {
+		t.Errorf("run_end = %v", seen["run_end"])
+	}
+	// The stream mirrors the run; it never replaces or adds terminal output.
+	if n := len(messages(r.output)); logs != n-2 {
+		t.Errorf("%d log events for %d [mins] lines + summary", logs, n)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "in.webp")); err != nil {
+		t.Error(err)
+	}
+
+	// Off by default: no stream file appears without the flag.
+	if err := os.Remove(filepath.Join(dir, "run.ndjson")); err != nil {
+		t.Fatal(err)
+	}
+	run(t, bin, dir, "--no-tui", "--img-encoder", "libwebp", "in.png")
+	if _, err := os.Stat(filepath.Join(dir, "run.ndjson")); !os.IsNotExist(err) {
+		t.Errorf("events file written without --events: %v", err)
+	}
+}
+
+func TestOutDir(t *testing.T) {
+	bin := minsBin(t)
+	fix := fixtures(t)
+	dir := t.TempDir()
+	copyFixture(t, fix, dir, "in.png")
+	r := run(t, bin, dir, "--no-tui", "--img-encoder", "libwebp", "--out-dir", "out", "in.png")
+	if r.code != 0 {
+		t.Fatalf("exit %d:\n%s", r.code, r.output)
+	}
+	out := filepath.Join(dir, "out")
+	if _, err := os.Stat(filepath.Join(out, "in.webp")); err != nil {
+		t.Error(err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "in.vmaf.json")); err != nil {
+		t.Error(err)
+	}
+	// Nothing lands beside the input, and temp work does not leak into out/.
+	if _, err := os.Stat(filepath.Join(dir, "in.webp")); !os.IsNotExist(err) {
+		t.Errorf("output written beside input: %v", err)
+	}
+	rep := readReport(t, filepath.Join(out, "in.vmaf.json"))
+	if rep["output"] != filepath.Join(out, "in.webp") {
+		t.Errorf("report output = %v", rep["output"])
+	}
+}
+
+func TestOutDirVideo(t *testing.T) {
+	bin := minsBin(t)
+	fix := fixtures(t)
+	dir := t.TempDir()
+	copyFixture(t, fix, dir, "clip.mp4")
+	r := run(t, bin, dir, "--no-tui", "--mode", "video",
+		"--crf-min", "40", "--crf-max", "41", "--out-dir", "out", "clip.mp4")
+	if r.code != 0 {
+		t.Fatalf("exit %d:\n%s", r.code, r.output)
+	}
+	out := filepath.Join(dir, "out")
+	for _, name := range []string{"clip.av1.mp4", "clip.vmaf.json"} {
+		if _, err := os.Stat(filepath.Join(out, name)); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "clip.av1.mp4")); !os.IsNotExist(err) {
+		t.Errorf("video written beside input: %v", err)
+	}
+	// Temp work stays beside the input and is cleaned up.
+	leftovers, _ := filepath.Glob(filepath.Join(dir, ".mins.*"))
+	if len(leftovers) != 0 {
+		t.Errorf("temp dirs left behind: %v", leftovers)
+	}
+}
+
+func TestOutDirCollisionFailsOneFile(t *testing.T) {
+	bin := minsBin(t)
+	fix := fixtures(t)
+	dir := t.TempDir()
+	for _, sub := range []string{"a", "b"} {
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		copyFixture(t, fix, filepath.Join(dir, sub), "in.png")
+	}
+	r := run(t, bin, dir, "--no-tui", "--img-encoder", "libwebp",
+		"--out-dir", "out", "a/in.png", "b/in.png")
+	if r.code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", r.code, r.output)
+	}
+	if n := strings.Count(r.output, "ERROR: output collision:"); n != 1 {
+		t.Errorf("%d collision rows, want 1:\n%s", n, r.output)
+	}
+	if n := strings.Count(r.output, "PASS"); n < 1 {
+		t.Errorf("the first file should still be written:\n%s", r.output)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "out", "in.webp")); err != nil {
+		t.Errorf("surviving output missing: %v", err)
+	}
+}
+
 func TestGoAnimated(t *testing.T) {
 	bin := minsBin(t)
 	fix := fixtures(t)

@@ -18,6 +18,7 @@ type Logger struct {
 	mu    sync.Mutex
 	file  *os.File
 	sink  func(string)
+	tee   func(string)
 	Path  string
 	Dir   string
 	RunID string
@@ -77,17 +78,27 @@ func (l *Logger) SetSink(fn func(string)) {
 	l.mu.Unlock()
 }
 
+// Tee mirrors every line to fn without changing where it is printed.
+func (l *Logger) Tee(fn func(string)) {
+	l.mu.Lock()
+	l.tee = fn
+	l.mu.Unlock()
+}
+
 // Info prints "[mins] ..." to stdout and mirrors it to the log.
 func (l *Logger) Info(format string, args ...any) {
 	line := "[mins] " + fmt.Sprintf(format, args...)
 	l.mu.Lock()
-	sink := l.sink
+	sink, tee := l.sink, l.tee
 	if sink == nil {
 		fmt.Fprintln(l.Out, line)
 	}
 	l.mu.Unlock()
 	if sink != nil {
 		sink(line)
+	}
+	if tee != nil {
+		tee(line)
 	}
 	l.Append(line)
 }
@@ -101,13 +112,16 @@ func (l *Logger) Warn(format string, args ...any) {
 func (l *Logger) Error(format string, args ...any) {
 	line := "mins: error: " + fmt.Sprintf(format, args...)
 	l.mu.Lock()
-	sink := l.sink
+	sink, tee := l.sink, l.tee
 	if sink == nil {
 		fmt.Fprintln(l.Err, line)
 	}
 	l.mu.Unlock()
 	if sink != nil {
 		sink(line)
+	}
+	if tee != nil {
+		tee(line)
 	}
 	l.Append(line)
 }

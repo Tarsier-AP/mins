@@ -90,8 +90,9 @@ func ProcessFile(e *core.Env, input string) (result.Row, bool, error) {
 	if tw.Trimmed {
 		trimSuffix = fmt.Sprintf(".trim%s-%s", tw.SS, tw.EN)
 	}
-	out := filepath.Join(dir, base+trimSuffix+".av1."+c.VidFmt)
-	rep := filepath.Join(dir, base+trimSuffix+".vmaf.json")
+	outDir := c.OutDirFor(dir)
+	out := filepath.Join(outDir, base+trimSuffix+".av1."+c.VidFmt)
+	rep := filepath.Join(outDir, base+trimSuffix+".vmaf.json")
 
 	if c.SkipExisting {
 		if _, err := os.Stat(out); err == nil {
@@ -100,6 +101,9 @@ func ProcessFile(e *core.Env, input string) (result.Row, bool, error) {
 		}
 	}
 
+	if err := e.ClaimOutput(out, input); err != nil {
+		return errRow(filepath.Base(input), "av1", "ERROR: "+err.Error()), true, nil
+	}
 	work, err := core.TempDir(input)
 	if err != nil {
 		return errRow(filepath.Base(input), "av1", "ERROR: cannot create temp dir in "+dir), true, nil

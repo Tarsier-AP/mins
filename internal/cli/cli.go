@@ -73,6 +73,11 @@ type Options struct {
 	SkipExisting       bool
 	Log                string
 	LogSet             bool
+	Events             string
+	EventsSet          bool
+	OutDir             string
+	OutDirSet          bool
+	Describe           bool
 	Positional         []string
 	Args               []string
 }
@@ -362,6 +367,22 @@ func Parse(argv []string) (*Options, error) {
 				o.Log = "auto"
 			}
 			o.LogSet = true
+		case "--events":
+			v, err := need(i, a)
+			if err != nil {
+				return nil, err
+			}
+			o.Events, o.EventsSet = v, true
+			i++
+		case "--out-dir":
+			v, err := need(i, a)
+			if err != nil {
+				return nil, err
+			}
+			o.OutDir, o.OutDirSet = v, true
+			i++
+		case "--describe":
+			o.Describe = true
 		case "-h", "--help":
 			o.Log = "\x00help"
 		case "-v", "--version":
@@ -457,6 +478,10 @@ the VMAF gate. --img-encoder magick is therefore rejected.
   --no-json        don't write JSON reports (alias: --no-report)
   --skip-existing  skip files whose computed output already exists
   --log FILE       append a run log to FILE; 'auto' -> <first input's dir>/mins.log
+  --events FILE    write the NDJSON progress stream consumed by mins-gui
+  --out-dir DIR    write finished files and reports here instead of beside the
+                   input (temp work stays beside the input)
+  --describe       print the option surface as JSON and exit
   -v, --version    print version and exit
   -h, --help       print this help and exit
 `

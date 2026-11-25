@@ -39,6 +39,15 @@ func run(argv []string) int {
 		fmt.Printf("mins %s\nparity: %s\n", cli.Version, cli.Parity)
 		return 0
 	}
+	if o.Describe {
+		s, err := cli.Describe()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "mins: error: "+err.Error())
+			return 2
+		}
+		fmt.Print(s)
+		return 0
+	}
 	if len(o.Positional) == 0 {
 		fmt.Fprint(os.Stderr, cli.Help())
 		fmt.Fprintln(os.Stderr, "mins: error: at least one input file is required")

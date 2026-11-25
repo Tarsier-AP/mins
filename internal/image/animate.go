@@ -75,8 +75,9 @@ func ProcessAnimate(e *core.Env, input string) (result.Row, bool, error) {
 	if c.StartRaw != "" || c.EndRaw != "" {
 		trimSuffix = fmt.Sprintf(".trim%s-%s", ss, en)
 	}
-	out := filepath.Join(dir, base+trimSuffix+"."+c.ImgFmt)
-	rep := filepath.Join(dir, base+trimSuffix+".vmaf.json")
+	outDir := c.OutDirFor(dir)
+	out := filepath.Join(outDir, base+trimSuffix+"."+c.ImgFmt)
+	rep := filepath.Join(outDir, base+trimSuffix+".vmaf.json")
 	if c.SkipExisting {
 		if _, err := os.Stat(out); err == nil {
 			e.Log.Info("skipping %s: output already exists", filepath.Base(input))
@@ -84,6 +85,9 @@ func ProcessAnimate(e *core.Env, input string) (result.Row, bool, error) {
 		}
 	}
 
+	if err := e.ClaimOutput(out, input); err != nil {
+		return errRow(filepath.Base(input), mode, "ERROR: "+err.Error()), true, nil
+	}
 	work, err := core.TempDir(input)
 	if err != nil {
 		return errRow(filepath.Base(input), mode, "ERROR: cannot create temp dir in "+dir), true, nil

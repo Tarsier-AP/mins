@@ -159,11 +159,12 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 	}
 	base := util.InStem(input)
 	ext := util.InExt(input)
-	out := filepath.Join(dir, base+"."+c.ImgFmt)
-	rep := filepath.Join(dir, base+".vmaf.json")
+	outDir := c.OutDirFor(dir)
+	out := filepath.Join(outDir, base+"."+c.ImgFmt)
+	rep := filepath.Join(outDir, base+".vmaf.json")
 	if strings.EqualFold(ext, c.ImgFmt) {
-		out = filepath.Join(dir, base+".min."+c.ImgFmt)
-		rep = filepath.Join(dir, base+".min.vmaf.json")
+		out = filepath.Join(outDir, base+".min."+c.ImgFmt)
+		rep = filepath.Join(outDir, base+".min.vmaf.json")
 	}
 	if c.SkipExisting {
 		if _, err := os.Stat(out); err == nil {
@@ -183,6 +184,9 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 	}
 	animated := nframes > 1
 
+	if err := e.ClaimOutput(out, input); err != nil {
+		return errRow(filepath.Base(input), mode, "ERROR: "+err.Error()), true, nil
+	}
 	work, err := core.TempDir(input)
 	if err != nil {
 		return errRow(filepath.Base(input), mode, "ERROR: cannot create temp dir in "+dir), true, nil

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"strings"
 	"sync"
 	"testing"
 )
@@ -76,5 +77,45 @@ func TestQStateConcurrent(t *testing.T) {
 	}
 	if seed < 0 || seed > hi {
 		t.Fatalf("seed = %d outside 0..%d", seed, hi)
+	}
+}
+
+func TestClaimOutputRefusesSecondWriter(t *testing.T) {
+	// Distinct temp paths so the process-wide map stays clean for other tests.
+	a := t.TempDir() + "/same.webp"
+	if err := claimOutput(a, "a/in.png"); err != nil {
+		t.Fatal(err)
+	}
+	err := claimOutput(a, "b/in.png")
+	if err == nil {
+		t.Fatal("second claim of the same output was allowed")
+	}
+	if !strings.Contains(err.Error(), "a/in.png") || !strings.Contains(err.Error(), "b/in.png") {
+		t.Errorf("error should name both inputs: %v", err)
+	}
+	if err := claimOutput(t.TempDir()+"/other.webp", "c/in.png"); err != nil {
+		t.Errorf("unrelated output refused: %v", err)
+	}
+}
+
+func TestClaimOutputIsRaceFree(t *testing.T) {
+	target := t.TempDir() + "/race.webp"
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	wins := 0
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if claimOutput(target, "in"+string(rune('a'+i%26))+".png") == nil {
+				mu.Lock()
+				wins++
+				mu.Unlock()
+			}
+		}(i)
+	}
+	wg.Wait()
+	if wins != 1 {
+		t.Fatalf("%d claims succeeded, want exactly 1", wins)
 	}
 }

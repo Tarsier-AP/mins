@@ -96,9 +96,11 @@ type Config struct {
 	RefineBoundaryCost int
 	SkipExisting       bool
 
-	LogFile string
-	LogDir  string
-	RunID   string
+	LogFile    string
+	LogDir     string
+	RunID      string
+	EventsFile string
+	OutDir     string
 
 	Positional []string
 
@@ -113,6 +115,15 @@ type Config struct {
 	NeedVid2Anim bool
 
 	Warnings []string
+}
+
+// OutDirFor is where finished files and reports go: --out-dir when set,
+// otherwise the input's own directory.
+func (c *Config) OutDirFor(inputDir string) string {
+	if c.OutDir != "" {
+		return c.OutDir
+	}
+	return inputDir
 }
 
 var (
@@ -149,6 +160,8 @@ func Normalize(o *cli.Options) (*Config, error) {
 		QAuto:           o.QAuto,
 		SkipExisting:    o.SkipExisting,
 		LogFile:         o.Log,
+		EventsFile:      o.Events,
+		OutDir:          o.OutDir,
 		Positional:      o.Positional,
 		NProc:           runtime.NumCPU(),
 	}

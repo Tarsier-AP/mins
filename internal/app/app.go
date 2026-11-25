@@ -10,11 +10,13 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"mins/internal/audio"
 	"mins/internal/audioproc"
 	"mins/internal/config"
 	"mins/internal/core"
+	"mins/internal/events"
 	"mins/internal/ffmpeg"
 	"mins/internal/image"
 	"mins/internal/logx"
@@ -29,6 +31,23 @@ import (
 
 // Run executes a whole run and returns the process exit code.
 func Run(c *config.Config, log *logx.Logger) int {
+	ev, err := events.Open(c.EventsFile)
+	if err != nil {
+		log.Error("cannot write events file: %v", err)
+		return 2
+	}
+	defer ev.Close()
+	started := time.Now()
+	if c.OutDir != "" {
+		if abs, err := filepath.Abs(c.OutDir); err == nil {
+			c.OutDir = abs
+		}
+		if err := os.MkdirAll(c.OutDir, 0o755); err != nil {
+			log.Error("cannot create --out-dir: %v", err)
+			return 2
+		}
+	}
+
 	embedded, subdir := tools.Embedded()
 	tr := tools.New(embedded, subdir)
 
@@ -53,6 +72,7 @@ func Run(c *config.Config, log *logx.Logger) int {
 	}
 	e.Audio = &audio.Engine{R: e.R, Log: log, C: c}
 	e.Img = native.New(c, e.R, tr, log)
+	log.Tee(ev.Log)
 	if c.QAuto {
 		e.QState = core.NewQState(c.QMin, c.QMax)
 	}
@@ -122,6 +142,7 @@ func Run(c *config.Config, log *logx.Logger) int {
 	} else if hasAud && !hasImg && !hasVid {
 		dashMode = "audio"
 	}
+	ev.Emit("run_start", map[string]any{"mode": c.Mode, "total": len(jobs), "workers": c.Workers})
 	dashOn := !c.NoTUI && tui.IsTerminal(os.Stderr)
 	fileLabel := "batch"
 	if len(jobs) == 1 {
@@ -154,6 +175,7 @@ func Run(c *config.Config, log *logx.Logger) int {
 		var err error
 		jobLabel := filepath.Base(j.input)
 		env.TUIJob = jobLabel
+		ev.Emit("file_start", map[string]any{"index": j.idx, "input": j.input, "mode": j.mode})
 		dash.StartFile(jobLabel, j.input, dashMode)
 		switch j.mode {
 		case "subtitle":
@@ -192,6 +214,12 @@ func Run(c *config.Config, log *logx.Logger) int {
 			dash.Progress(n, int(failedN.Load()))
 		}
 		dash.Done(jobLabel, row.Status, resultSize(j.input, row.Output))
+		ev.Emit("file_done", map[string]any{
+			"index": j.idx, "output": row.Output, "mode": row.Mode,
+			"q": row.Q, "vmaf": row.VMAF, "size": row.Size,
+			"status": row.Status, "failed": failed,
+		})
+		ev.Emit("progress", map[string]any{"done": n, "total": len(jobs), "failures": int(failedN.Load())})
 	}
 
 	if parallel {
@@ -231,6 +259,10 @@ func Run(c *config.Config, log *logx.Logger) int {
 
 	dash.Close()
 	log.SetSink(nil)
+	ev.Emit("run_end", map[string]any{
+		"failures": e.Table.Failed(), "fatal": fatal.Load(),
+		"elapsed_ms": time.Since(started).Milliseconds(),
+	})
 
 	if fatal.Load() {
 		select {

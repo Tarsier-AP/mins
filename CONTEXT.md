@@ -86,6 +86,13 @@ from PATH.
 - **Sizes** — `numfmt --to=iec --suffix=B` semantics: 1024-based, ceiling
   rounding, one decimal below 10, locale decimal separator.
 - **Exit codes** — 0 success, 1 failures, 2 usage/fatal, 130 interrupted.
+- **Events** — `--events FILE` writes NDJSON, off by default. Events are derived
+  facts; they never change output, reports, summary or exit code (ADR 0011).
+- **Option surface** — `--describe` prints the flags, kinds, defaults, enum
+  values and enforced bounds as JSON. Frontends render from it; they do not
+  hardcode ranges (ADR 0011).
+- **Output location** — finished media and reports go beside the input unless
+  `--out-dir` is given; temp work always stays beside the input (ADR 0012).
 - **Tools** — resolution order is `MINS_<NAME>` override → `MINS_TOOLS_DIR` →
   embedded cache → `PATH` (development only). Embedded assets are gzip
   compressed, SHA-256 verified, and extracted atomically.
@@ -110,5 +117,6 @@ from PATH.
 | `report` | JSON schemas |
 | `result` | summary table |
 | `tui` | built-in dashboard |
+| `events` | opt-in NDJSON progress stream (`--events`) |
 | `logx` | run log and `mins-logs/` |
 | `util` | time parsing, human sizes, stems |

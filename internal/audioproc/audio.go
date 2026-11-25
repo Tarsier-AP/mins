@@ -87,17 +87,22 @@ func Process(e *core.Env, input string) (result.Row, bool, error) {
 		return errRow(filepath.Base(input), "ERROR: cannot enter "+filepath.Dir(input)), true, nil
 	}
 	base := util.InStem(input)
-	out := filepath.Join(dir, base+"."+ext)
-	rep := filepath.Join(dir, base+".audio.json")
+	outDir := c.OutDirFor(dir)
+	out := filepath.Join(outDir, base+"."+ext)
+	rep := filepath.Join(outDir, base+".audio.json")
 	if strings.EqualFold(util.InExt(input), ext) {
-		out = filepath.Join(dir, base+".min."+ext)
-		rep = filepath.Join(dir, base+".min.audio.json")
+		out = filepath.Join(outDir, base+".min."+ext)
+		rep = filepath.Join(outDir, base+".min.audio.json")
 	}
 	if c.SkipExisting {
 		if _, err := os.Stat(out); err == nil {
 			e.Log.Info("skipping %s: output already exists", filepath.Base(input))
 			return errRow(filepath.Base(out), "SKIPPED (exists)"), false, nil
 		}
+	}
+
+	if err := e.ClaimOutput(out, input); err != nil {
+		return errRow(filepath.Base(input), "ERROR: "+err.Error()), true, nil
 	}
 
 	inDur := 0.0

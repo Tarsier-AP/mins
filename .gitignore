@@ -10,3 +10,5 @@
 /tools/dist/
 *.part
 .mins.*
+
+/gui/target/

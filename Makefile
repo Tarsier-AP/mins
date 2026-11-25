@@ -10,7 +10,7 @@ TARGETS    := linux/amd64 linux/arm64 windows/amd64 darwin/amd64 darwin/arm64
 DIST       := tools/dist
 TOOLCHAIN_TARGET ?= $(shell $(GO) env GOOS)_$(shell $(GO) env GOARCH)
 
-.PHONY: all build test vet check fixtures integration parity release clean toolchain assets bundle licenses sources relink
+.PHONY: all build test vet check fixtures integration parity release clean toolchain assets bundle licenses sources relink gui gui-check gui-run
 
 all: build
 
@@ -39,6 +39,19 @@ vet:
 
 check: vet test
 	bash tools/check-licenses.sh
+
+# Desktop frontend (gui/). The engine is still the Go binary; the GUI only
+# builds a normal command line and reads --events. Kept out of `check` so the
+# Go gate stays dependency-free.
+gui:
+	cd gui && cargo build --release
+
+gui-check: build
+	cd gui && MINS_BIN=$(CURDIR)/$(BIN) cargo test
+
+# Run the GUI against the dev binary just built by `make build`.
+gui-run: build
+	MINS_BIN=$(CURDIR)/$(BIN) cargo run --manifest-path gui/Cargo.toml
 
 # Regenerate THIRD_PARTY_NOTICES.md from tools/licenses/inventory.tsv.
 licenses:

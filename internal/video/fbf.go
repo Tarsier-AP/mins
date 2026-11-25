@@ -78,8 +78,9 @@ func ProcessFBF(e *core.Env, input string) (result.Row, bool, error) {
 	if tw.Trimmed {
 		trimSuffix = fmt.Sprintf(".trim%s-%s", tw.SS, tw.EN)
 	}
-	out := filepath.Join(dir, base+trimSuffix+".fbf.av1."+c.VidFmt)
-	rep := filepath.Join(dir, base+trimSuffix+".fbf.vmaf.json")
+	destDir := c.OutDirFor(dir)
+	out := filepath.Join(destDir, base+trimSuffix+".fbf.av1."+c.VidFmt)
+	rep := filepath.Join(destDir, base+trimSuffix+".fbf.vmaf.json")
 	if c.SkipExisting {
 		if _, err := os.Stat(out); err == nil {
 			e.Log.Info("skipping %s: output already exists", filepath.Base(input))
@@ -87,6 +88,9 @@ func ProcessFBF(e *core.Env, input string) (result.Row, bool, error) {
 		}
 	}
 
+	if err := e.ClaimOutput(out, input); err != nil {
+		return errRow(filepath.Base(input), "fbf", "ERROR: "+err.Error()), true, nil
+	}
 	work, err := core.TempDir(input)
 	if err != nil {
 		return errRow(filepath.Base(input), "fbf", "ERROR: cannot create temp dir in "+dir), true, nil
